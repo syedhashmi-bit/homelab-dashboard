@@ -10,8 +10,17 @@ export async function GET() {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const d = await res.json() as Record<string, unknown>;
-    const num = (k: string): number | null => typeof d[k] === "number" ? d[k] as number : null;
-    const str = (k: string): string | null => typeof d[k] === "string" ? d[k] as string : null;
+    // MikroTik REST API returns all values as strings, not numbers
+    const num = (k: string): number | null => {
+      const v = d[k];
+      if (typeof v === "number") return v;
+      if (typeof v === "string" && v.trim() !== "") { const n = parseFloat(v); return isNaN(n) ? null : n; }
+      return null;
+    };
+    const str = (k: string): string | null => {
+      const v = d[k];
+      return typeof v === "string" ? v : (typeof v === "number" ? String(v) : null);
+    };
     const memTotal = num("total-memory");
     const freeMem  = num("free-memory");
     const hddTotal = num("total-hdd-space");
