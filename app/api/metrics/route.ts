@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-const PROMETHEUS = "http://192.168.88.196:30104";
+const TRUENAS_IP = process.env.TRUENAS_IP || "192.168.88.196";
+const PROMETHEUS = `http://${TRUENAS_IP}:30104`;
 
 const FS_EXCLUDE = `fstype!~"tmpfs|devtmpfs|overlay|squashfs|ramfs"`;
 

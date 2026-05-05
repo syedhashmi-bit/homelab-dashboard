@@ -8,6 +8,8 @@ interface ServiceResult {
   downCount?: number;
 }
 
+const TRUENAS_IP = process.env.TRUENAS_IP || "192.168.88.196";
+
 function fmtMB(b: number): string {
   if (b === 0) return "0 B";
   if (b < 1e6) return `${(b/1e3).toFixed(0)} KB`;
@@ -38,14 +40,14 @@ async function checkReachable(baseUrl: string): Promise<boolean> {
 async function radarr(): Promise<ServiceResult> {
   try {
     const data = await apiFetch(
-      "http://192.168.88.196:30025/api/v3/movie?apiKey=***REMOVED***"
+      `http://${TRUENAS_IP}:30025/api/v3/movie?apiKey=***REMOVED***`
     ) as { hasFile: boolean; monitored: boolean }[];
     const total   = data.length;
     const missing = data.filter(m => !m.hasFile && m.monitored).length;
     const pct = total > 0 ? Math.round(((total - missing) / total) * 100) : 100;
     return { name: "radarr", up: true, pct, lines: [`${total} movies · ${missing} missing`, `${pct}% complete`] };
   } catch {
-    const up = await checkReachable("http://192.168.88.196:30025");
+    const up = await checkReachable(`http://${TRUENAS_IP}:30025`);
     return { name: "radarr", up, lines: up ? ["—"] : [] };
   }
 }
@@ -53,9 +55,9 @@ async function radarr(): Promise<ServiceResult> {
 async function sonarr(): Promise<ServiceResult> {
   try {
     const [seriesData, wantedData, queueData] = await Promise.all([
-      apiFetch("http://192.168.88.196:33027/api/v3/series?apiKey=***REMOVED***") as Promise<{ monitored: boolean }[]>,
-      apiFetch("http://192.168.88.196:33027/api/v3/wanted/missing?apiKey=***REMOVED***&pageSize=1") as Promise<{ totalRecords: number }>,
-      apiFetch("http://192.168.88.196:33027/api/v3/queue?apiKey=***REMOVED***&pageSize=1") as Promise<{ totalRecords: number }>,
+      apiFetch(`http://${TRUENAS_IP}:33027/api/v3/series?apiKey=***REMOVED***`) as Promise<{ monitored: boolean }[]>,
+      apiFetch(`http://${TRUENAS_IP}:33027/api/v3/wanted/missing?apiKey=***REMOVED***&pageSize=1`) as Promise<{ totalRecords: number }>,
+      apiFetch(`http://${TRUENAS_IP}:33027/api/v3/queue?apiKey=***REMOVED***&pageSize=1`) as Promise<{ totalRecords: number }>,
     ]);
     const total   = seriesData.length;
     const missing = wantedData.totalRecords ?? 0;
@@ -64,7 +66,7 @@ async function sonarr(): Promise<ServiceResult> {
     if (queue > 0) lines.push(`+${queue} downloading`);
     return { name: "sonarr", up: true, lines };
   } catch {
-    const up = await checkReachable("http://192.168.88.196:33027");
+    const up = await checkReachable(`http://${TRUENAS_IP}:33027`);
     return { name: "sonarr", up, lines: up ? ["—"] : [] };
   }
 }
@@ -72,14 +74,14 @@ async function sonarr(): Promise<ServiceResult> {
 async function bazarr(): Promise<ServiceResult> {
   try {
     const [epData, mvData] = await Promise.all([
-      apiFetch("http://192.168.88.196:30046/api/episodes/wanted?apiKey=***REMOVED***&start=0&length=1") as Promise<{ data: { total: number } }>,
-      apiFetch("http://192.168.88.196:30046/api/movies/wanted?apiKey=***REMOVED***&start=0&length=1") as Promise<{ data: { total: number } }>,
+      apiFetch(`http://${TRUENAS_IP}:30046/api/episodes/wanted?apiKey=***REMOVED***&start=0&length=1`) as Promise<{ data: { total: number } }>,
+      apiFetch(`http://${TRUENAS_IP}:30046/api/movies/wanted?apiKey=***REMOVED***&start=0&length=1`) as Promise<{ data: { total: number } }>,
     ]);
     const epMissing = epData?.data?.total ?? 0;
     const mvMissing = mvData?.data?.total ?? 0;
     return { name: "bazarr", up: true, lines: [`${epMissing} ep subs · ${mvMissing} movie subs`] };
   } catch {
-    const up = await checkReachable("http://192.168.88.196:30046");
+    const up = await checkReachable(`http://${TRUENAS_IP}:30046`);
     return { name: "bazarr", up, lines: up ? ["—"] : [] };
   }
 }
@@ -87,19 +89,19 @@ async function bazarr(): Promise<ServiceResult> {
 async function tautulli(): Promise<ServiceResult> {
   try {
     const data = await apiFetch(
-      "http://192.168.88.196:30047/api/v2?apikey=***REMOVED***&cmd=get_activity"
+      `http://${TRUENAS_IP}:30047/api/v2?apikey=***REMOVED***&cmd=get_activity`
     ) as { response: { data: { stream_count: string } } };
     const count = parseInt(data?.response?.data?.stream_count ?? "0", 10);
     return { name: "tautulli", up: true, lines: [count > 0 ? `${count} active stream${count !== 1 ? "s" : ""}` : "no active streams"] };
   } catch {
-    const up = await checkReachable("http://192.168.88.196:30047");
+    const up = await checkReachable(`http://${TRUENAS_IP}:30047`);
     return { name: "tautulli", up, lines: up ? ["—"] : [] };
   }
 }
 
 async function qbittorrent(): Promise<ServiceResult> {
   try {
-    const data = await apiFetch("http://192.168.88.196:30024/api/v2/torrents/info") as { state: string; dlspeed?: number; size?: number }[];
+    const data = await apiFetch(`http://${TRUENAS_IP}:30024/api/v2/torrents/info`) as { state: string; dlspeed?: number; size?: number }[];
     const total      = data.length;
     const dlStates   = new Set(["downloading", "stalledDL", "checkingDL", "pausedDL", "forcedDL", "metaDL"]);
     const seedStates = new Set(["uploading", "stalledUP", "checkingUP", "pausedUP", "forcedUP", "seeding"]);
@@ -113,7 +115,7 @@ async function qbittorrent(): Promise<ServiceResult> {
     return { name: "qbittorrent", up: true, lines };
   } catch {
     // qBittorrent may require auth cookie; check if server responds at all
-    const up = await checkReachable("http://192.168.88.196:30024/api/v2/app/version");
+    const up = await checkReachable(`http://${TRUENAS_IP}:30024/api/v2/app/version`);
     return { name: "qbittorrent", up, lines: up ? ["—"] : [] };
   }
 }
@@ -122,9 +124,9 @@ async function overseerr(): Promise<ServiceResult> {
   const KEY = "***REMOVED***";
   try {
     const [pendingData, approvedData, availableData] = await Promise.all([
-      apiFetch("http://192.168.88.196:30002/api/v1/request?take=1&skip=0&filter=pending", { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
-      apiFetch("http://192.168.88.196:30002/api/v1/request?take=1&skip=0&filter=approved", { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
-      apiFetch("http://192.168.88.196:30002/api/v1/request?take=1&skip=0&filter=available", { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
+      apiFetch(`http://${TRUENAS_IP}:30002/api/v1/request?take=1&skip=0&filter=pending`, { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
+      apiFetch(`http://${TRUENAS_IP}:30002/api/v1/request?take=1&skip=0&filter=approved`, { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
+      apiFetch(`http://${TRUENAS_IP}:30002/api/v1/request?take=1&skip=0&filter=available`, { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
     ]);
     const pending   = pendingData.pageInfo?.results ?? 0;
     const approved  = approvedData.pageInfo?.results ?? 0;
@@ -133,7 +135,7 @@ async function overseerr(): Promise<ServiceResult> {
     if (available > 0) lines.push(`${available} available`);
     return { name: "overseerr", up: true, lines };
   } catch {
-    const up = await checkReachable("http://192.168.88.196:30002");
+    const up = await checkReachable(`http://${TRUENAS_IP}:30002`);
     return { name: "overseerr", up, lines: up ? ["—"] : [] };
   }
 }
@@ -141,7 +143,7 @@ async function overseerr(): Promise<ServiceResult> {
 async function pihole(): Promise<ServiceResult> {
   try {
     const data = await apiFetch(
-      "http://192.168.88.196:20720/api/stats/summary",
+      `http://${TRUENAS_IP}:20720/api/stats/summary`,
       { Authorization: "Bearer ***REMOVED***" }
     ) as {
       queries?: { total?: number; percent_blocked?: number };
@@ -151,7 +153,7 @@ async function pihole(): Promise<ServiceResult> {
     const blocked  = (data.queries?.percent_blocked ?? 0).toFixed(1);
     return { name: "pihole", up: true, lines: [`${total.toLocaleString()} queries · ${blocked}% blocked`] };
   } catch {
-    const up = await checkReachable("http://192.168.88.196:20720");
+    const up = await checkReachable(`http://${TRUENAS_IP}:20720`);
     return { name: "pihole", up, lines: up ? ["—"] : [] };
   }
 }
@@ -159,14 +161,14 @@ async function pihole(): Promise<ServiceResult> {
 async function prowlarr(): Promise<ServiceResult> {
   try {
     const data = await apiFetch(
-      "http://192.168.88.196:30050/api/v1/indexerstats?apikey=***REMOVED***"
+      `http://${TRUENAS_IP}:30050/api/v1/indexerstats?apikey=***REMOVED***`
     ) as { indexers?: { numberOfGrabs?: number; numberOfQueries?: number }[] };
     const indexers = data.indexers ?? [];
     const grabs    = indexers.reduce((s, i) => s + (i.numberOfGrabs   ?? 0), 0);
     const queries  = indexers.reduce((s, i) => s + (i.numberOfQueries ?? 0), 0);
     return { name: "prowlarr", up: true, lines: [`${indexers.length} indexers · ${grabs} grabs · ${queries} queries`] };
   } catch {
-    const up = await checkReachable("http://192.168.88.196:30050");
+    const up = await checkReachable(`http://${TRUENAS_IP}:30050`);
     return { name: "prowlarr", up, lines: up ? ["—"] : [] };
   }
 }
@@ -174,7 +176,7 @@ async function prowlarr(): Promise<ServiceResult> {
 async function uptimeKuma(): Promise<ServiceResult> {
   try {
     const data = await apiFetch(
-      "http://192.168.88.196:31050/api/status-page/services",
+      `http://${TRUENAS_IP}:31050/api/status-page/services`,
       { Authorization: "Bearer ***REMOVED***" }
     ) as { monitors?: { status?: number }[] };
     const monitors  = data.monitors ?? [];
@@ -183,13 +185,13 @@ async function uptimeKuma(): Promise<ServiceResult> {
     const line      = downCount > 0 ? `${upCount} up · ${downCount} down` : `${upCount} sites up`;
     return { name: "uptimekuma", up: true, lines: [line], downCount };
   } catch {
-    const up = await checkReachable("http://192.168.88.196:31050");
+    const up = await checkReachable(`http://${TRUENAS_IP}:31050`);
     return { name: "uptimekuma", up, lines: up ? ["—"] : [] };
   }
 }
 
 async function nginxProxy(): Promise<ServiceResult> {
-  const BASE = "http://192.168.88.196:30020";
+  const BASE = `http://${TRUENAS_IP}:30020`;
   try {
     const tokenRes = await fetch(`${BASE}/api/tokens`, {
       method: "POST",

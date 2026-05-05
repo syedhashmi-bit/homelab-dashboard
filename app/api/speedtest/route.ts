@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-const BASE = "http://192.168.88.196:30220";
+const TRUENAS_IP = process.env.TRUENAS_IP || "192.168.88.196";
+const BASE = `http://${TRUENAS_IP}:30220`;
 
 type RawResult = {
   id?: number;
