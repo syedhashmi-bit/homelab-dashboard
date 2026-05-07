@@ -78,12 +78,11 @@ async function bazarr(): Promise<ServiceResult> {
 
   try {
     const [epData, mvData] = await Promise.all([
-      apiFetch(`${BASE_URL}/api/episodes/wanted?start=0&length=1`, HEADERS) as Promise<{ total?: number; data?: { total?: number } }>,
-      apiFetch(`${BASE_URL}/api/movies/wanted?start=0&length=1`, HEADERS) as Promise<{ total?: number; data?: { total?: number } }>,
+      apiFetch(`${BASE_URL}/api/episodes/wanted?start=0&length=1`, HEADERS) as Promise<{ total?: number }>,
+      apiFetch(`${BASE_URL}/api/movies/wanted?start=0&length=1`, HEADERS) as Promise<{ total?: number }>,
     ]);
-    console.log("bazarr response:", JSON.stringify(epData));
-    const epMissing = epData.total || epData.data?.total || 0;
-    const mvMissing = mvData.total || mvData.data?.total || 0;
+    const epMissing = epData.total ?? 0;
+    const mvMissing = mvData.total ?? 0;
     return { name: "bazarr", up: true, lines: [`${epMissing} missing ep subs · ${mvMissing} missing movie subs`] };
   } catch {
     const up = await checkReachable(BASE_URL);
@@ -106,17 +105,16 @@ async function tautulli(): Promise<ServiceResult> {
 
 async function qbittorrent(): Promise<ServiceResult> {
   const BASE = `http://${TRUENAS_IP}:30024`;
-  const dlStates   = new Set(["downloading", "stalledDL", "checkingDL", "pausedDL", "forcedDL", "metaDL"]);
-  const seedStates = new Set(["uploading", "stalledUP", "checkingUP", "pausedUP", "forcedUP", "seeding"]);
 
   function buildResult(data: { state: string; dlspeed?: number; size?: number }[]): ServiceResult {
-    const total        = data.length;
-    const downloading  = data.filter(t => dlStates.has(t.state)).length;
-    const seeding      = data.filter(t => seedStates.has(t.state)).length;
-    const totalSize    = data.reduce((s, t) => s + (t.size ?? 0), 0);
+    const downloading  = data.filter(t =>
+      t.state === "downloading" || t.state === "forcedDL" || t.state === "stalledDL"
+    ).length;
+    const seeding      = data.filter(t =>
+      t.state === "uploading" || t.state === "forcedUP"
+    ).length;
     const totalDlSpeed = data.reduce((s, t) => s + (t.dlspeed ?? 0), 0);
-    const lines = [`${total} total · ${downloading} dl · ${seeding} seed`];
-    if (totalSize > 0) lines.push(`${fmtMB(totalSize)} total`);
+    const lines = [`${downloading} downloading · ${seeding} seeding · ${data.length} total`];
     if (totalDlSpeed > 0) lines.push(`${fmtMB(totalDlSpeed)}/s`);
     return { name: "qbittorrent", up: true, lines };
   }
@@ -178,7 +176,7 @@ async function overseerr(): Promise<ServiceResult> {
 async function pihole(): Promise<ServiceResult> {
   const BASE = `http://${TRUENAS_IP}:20720`;
   const up = await checkReachable(BASE);
-  return { name: "pihole", up, lines: up ? ["2FA required"] : [] };
+  return { name: "pihole", up, lines: up ? ["2FA enabled · open dashboard"] : [] };
 }
 
 async function prowlarr(): Promise<ServiceResult> {
@@ -198,40 +196,35 @@ async function prowlarr(): Promise<ServiceResult> {
 
 async function uptimeKuma(): Promise<ServiceResult> {
   const BASE = `http://${TRUENAS_IP}:31050`;
-  const AUTH = { Authorization: "Bearer ***REMOVED***" };
 
-  function parseMonitors(data: unknown): ServiceResult {
+  function parseHeartbeats(data: unknown): ServiceResult | null {
     const obj = data as { monitors?: { status?: number }[]; heartbeatList?: Record<string, { status?: number }[]> };
     let monitors: { status?: number }[] = [];
     if (Array.isArray(obj.monitors)) {
       monitors = obj.monitors;
-    } else if (obj.heartbeatList) {
+    } else if (obj.heartbeatList && Object.keys(obj.heartbeatList).length > 0) {
       monitors = Object.values(obj.heartbeatList).map(beats => beats[beats.length - 1] ?? {});
     }
+    if (monitors.length === 0) return null;
     const upCount   = monitors.filter(m => m.status === 1).length;
     const downCount = monitors.filter(m => m.status === 0).length;
     const line      = downCount > 0 ? `${upCount} up · ${downCount} down` : `${upCount} sites up`;
     return { name: "uptimekuma", up: true, lines: [line], downCount };
   }
 
-  // Try public heartbeat endpoint first (no auth required)
   try {
-    const data = await apiFetch(`${BASE}/api/status-page/heartbeat/default`);
-    return parseMonitors(data);
+    // Discover slugs then fetch heartbeats for the first one
+    const list = await apiFetch(`${BASE}/api/status-page/list`) as { slug?: string }[];
+    const slug = Array.isArray(list) ? list[0]?.slug : null;
+    if (slug) {
+      const data = await apiFetch(`${BASE}/api/status-page/heartbeat/${slug}`);
+      const result = parseHeartbeats(data);
+      if (result) return result;
+    }
   } catch { /* fall through */ }
 
-  try {
-    const data = await apiFetch(`${BASE}/api/status-page/services`, AUTH);
-    return parseMonitors(data);
-  } catch { /* fall through */ }
-
-  try {
-    const data = await apiFetch(`${BASE}/api/status-page/heartbeat/services`, AUTH);
-    return parseMonitors(data);
-  } catch {
-    const up = await checkReachable(BASE);
-    return { name: "uptimekuma", up, lines: up ? ["—"] : [] };
-  }
+  const up = await checkReachable(BASE);
+  return { name: "uptimekuma", up, lines: up ? ["online"] : [] };
 }
 
 async function nginxProxy(): Promise<ServiceResult> {
