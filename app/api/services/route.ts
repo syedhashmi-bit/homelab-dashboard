@@ -74,33 +74,15 @@ async function sonarr(): Promise<ServiceResult> {
 async function bazarr(): Promise<ServiceResult> {
   const KEY = "***REMOVED***";
   const BASE_URL = `http://${TRUENAS_IP}:30046`;
-  type BazarrResp = { data?: { total?: number } | unknown[]; total?: number };
-  const getTotal = (r: BazarrResp) =>
-    (r.data as { total?: number } | undefined)?.total ?? r.total ?? 0;
-
-  // Try three auth formats in order until one succeeds
-  async function fetchWanted(resource: string): Promise<BazarrResp> {
-    const url  = `${BASE_URL}/api/${resource}?start=0&length=1`;
-    const urlV1 = `${BASE_URL}/api/v1/${resource}?start=0&length=1`;
-    const attempts: Array<() => Promise<BazarrResp>> = [
-      () => apiFetch(url,   { "X-API-KEY": KEY }) as Promise<BazarrResp>,
-      () => apiFetch(url,   { "api-key":   KEY }) as Promise<BazarrResp>,
-      () => apiFetch(`${url}&apikey=${KEY}`)       as Promise<BazarrResp>,
-      () => apiFetch(urlV1, { "X-API-KEY": KEY }) as Promise<BazarrResp>,
-    ];
-    for (const attempt of attempts) {
-      try { return await attempt(); } catch { /* try next */ }
-    }
-    throw new Error("all Bazarr auth formats failed");
-  }
+  const HEADERS = { "X-API-KEY": KEY };
 
   try {
     const [epData, mvData] = await Promise.all([
-      fetchWanted("episodes/wanted"),
-      fetchWanted("movies/wanted"),
+      apiFetch(`${BASE_URL}/api/episodes/wanted?start=0&length=1`, HEADERS) as Promise<{ total?: number }>,
+      apiFetch(`${BASE_URL}/api/movies/wanted?start=0&length=1`, HEADERS) as Promise<{ total?: number }>,
     ]);
-    const epMissing = getTotal(epData);
-    const mvMissing = getTotal(mvData);
+    const epMissing = epData.total ?? 0;
+    const mvMissing = mvData.total ?? 0;
     return { name: "bazarr", up: true, lines: [`${epMissing} ep subs · ${mvMissing} movie subs`] };
   } catch {
     const up = await checkReachable(BASE_URL);
@@ -154,9 +136,9 @@ async function qbittorrent(): Promise<ServiceResult> {
       next: { revalidate: 0 },
     });
     const setCookie = loginRes.headers.get("set-cookie") ?? "";
-    const sid = setCookie.split(";").map(p => p.trim()).find(p => p.startsWith("SID="));
+    const sid = setCookie.match(/SID=([^;]+)/)?.[1];
     if (!sid) throw new Error("no SID cookie in login response");
-    return buildResult(await fetchTorrents(sid));
+    return buildResult(await fetchTorrents(`SID=${sid}`));
   } catch {
     const up = await checkReachable(`${BASE}/api/v2/app/version`);
     return { name: "qbittorrent", up, lines: up ? ["—"] : [] };
@@ -196,13 +178,13 @@ async function pihole(): Promise<ServiceResult> {
     const authRes = await fetch(`${BASE}/api/auth`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password, totp: "" }),
       signal: AbortSignal.timeout(5000),
       next: { revalidate: 0 },
     });
     if (!authRes.ok) throw new Error(`auth HTTP ${authRes.status}`);
-    const authJson = await authRes.json() as { session?: { token?: string }; token?: string };
-    const token = authJson.session?.token ?? authJson.token;
+    const authJson = await authRes.json() as { session?: { sid?: string }; data?: { session?: { sid?: string } } };
+    const token = authJson?.session?.sid ?? authJson?.data?.session?.sid;
     if (!token) throw new Error("no token in auth response");
     piholeToken = token;
     piholeTokenExpiry = now + 30 * 60 * 1000;
