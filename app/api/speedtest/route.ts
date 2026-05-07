@@ -49,35 +49,38 @@ function extractArray(json: unknown): RawResult[] {
   return [];
 }
 
+const HISTORY_ENDPOINTS = [
+  `${BASE}/api/speedtest/results?limit=20`,
+  `${BASE}/api/speedtest?limit=20`,
+  `${BASE}/api/results?limit=20`,
+];
+
 export async function GET() {
-  try {
-    const res = await fetch(`${BASE}/api/speedtest/results?limit=20&page=1`, {
-      next: { revalidate: 0 },
-      signal: AbortSignal.timeout(5000),
-    });
-    console.log("speedtest status:", res.status);
-    if (res.ok) {
-      const json = await res.json();
-      console.log("speedtest data:", JSON.stringify(json).slice(0, 500));
-      const results = extractArray(json).filter(r => !r.failed);
-      if (results.length > 0) {
-        return NextResponse.json({ results: results.map(normalize), timestamp: Date.now() });
+  // Try history endpoints in order
+  for (const url of HISTORY_ENDPOINTS) {
+    try {
+      const res = await fetch(url, { next: { revalidate: 0 }, signal: AbortSignal.timeout(5000) });
+      const data = await res.json();
+      console.log("speedtest history:", res.status, JSON.stringify(data).slice(0, 300));
+      if (res.ok) {
+        const results = extractArray(data).filter(r => !r.failed);
+        if (results.length > 0) {
+          return NextResponse.json({ results: results.map(normalize), timestamp: Date.now() });
+        }
       }
-    }
-  } catch (e) {
-    console.error("[speedtest] fetch error:", e);
+    } catch { /* try next endpoint */ }
   }
 
-  // Fallback: latest single result
+  // Fallback: confirmed-working latest single result
   try {
     const res = await fetch(`${BASE}/api/speedtest/latest`, {
       next: { revalidate: 0 },
       signal: AbortSignal.timeout(5000),
     });
     if (res.ok) {
-      const json = await res.json();
+      const json = await res.json() as Record<string, unknown>;
       const arr = extractArray(json);
-      const single = arr.length > 0 ? arr[0] : (json as Record<string, unknown>).data as RawResult | undefined;
+      const single = arr.length > 0 ? arr[0] : json.data as RawResult | undefined;
       if (single) {
         return NextResponse.json({ results: [normalize(single)], timestamp: Date.now() });
       }
