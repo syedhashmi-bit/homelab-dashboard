@@ -2,12 +2,18 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
-    const auth = Buffer.from("monitor-only:***REMOVED***").toString("base64");
+    const username = "monitor-only";
+    const password = "***REMOVED***";
+    const auth = Buffer.from(`${username}:${password}`).toString("base64");
     const res = await fetch("http://192.168.88.1/rest/system/resource", {
-      headers: { Authorization: `Basic ${auth}`, Accept: "application/json" },
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
       signal: AbortSignal.timeout(4000),
-      next: { revalidate: 0 },
     });
+    console.log("mikrotik status:", res.status);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const d = await res.json() as Record<string, unknown>;
 

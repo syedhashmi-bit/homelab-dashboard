@@ -78,12 +78,13 @@ async function bazarr(): Promise<ServiceResult> {
 
   try {
     const [epData, mvData] = await Promise.all([
-      apiFetch(`${BASE_URL}/api/episodes/wanted?start=0&length=1`, HEADERS) as Promise<{ total?: number }>,
-      apiFetch(`${BASE_URL}/api/movies/wanted?start=0&length=1`, HEADERS) as Promise<{ total?: number }>,
+      apiFetch(`${BASE_URL}/api/episodes/wanted?start=0&length=1`, HEADERS) as Promise<{ total?: number; data?: { total?: number } }>,
+      apiFetch(`${BASE_URL}/api/movies/wanted?start=0&length=1`, HEADERS) as Promise<{ total?: number; data?: { total?: number } }>,
     ]);
-    const epMissing = epData.total ?? 0;
-    const mvMissing = mvData.total ?? 0;
-    return { name: "bazarr", up: true, lines: [`${epMissing} ep subs · ${mvMissing} movie subs`] };
+    console.log("bazarr response:", JSON.stringify(epData));
+    const epMissing = epData.total || epData.data?.total || 0;
+    const mvMissing = mvData.total || mvData.data?.total || 0;
+    return { name: "bazarr", up: true, lines: [`${epMissing} missing ep subs · ${mvMissing} missing movie subs`] };
   } catch {
     const up = await checkReachable(BASE_URL);
     return { name: "bazarr", up, lines: up ? ["—"] : [] };
@@ -108,12 +109,6 @@ async function qbittorrent(): Promise<ServiceResult> {
   const dlStates   = new Set(["downloading", "stalledDL", "checkingDL", "pausedDL", "forcedDL", "metaDL"]);
   const seedStates = new Set(["uploading", "stalledUP", "checkingUP", "pausedUP", "forcedUP", "seeding"]);
 
-  async function fetchTorrents(cookie?: string) {
-    const headers: Record<string, string> = {};
-    if (cookie) headers["Cookie"] = cookie;
-    return await apiFetch(`${BASE}/api/v2/torrents/info`, headers) as { state: string; dlspeed?: number; size?: number }[];
-  }
-
   function buildResult(data: { state: string; dlspeed?: number; size?: number }[]): ServiceResult {
     const total        = data.length;
     const downloading  = data.filter(t => dlStates.has(t.state)).length;
@@ -127,18 +122,33 @@ async function qbittorrent(): Promise<ServiceResult> {
   }
 
   try {
-    // Always login — qBittorrent requires session cookie auth
     const loginRes = await fetch(`${BASE}/api/v2/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: "username=admin&password=***REMOVED***",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Referer": BASE,
+      },
+      body: new URLSearchParams({ username: "admin", password: "***REMOVED***" }).toString(),
       signal: AbortSignal.timeout(5000),
       next: { revalidate: 0 },
     });
-    const setCookie = loginRes.headers.get("set-cookie") ?? "";
-    const sid = setCookie.match(/SID=([^;]+)/)?.[1];
+    const setCookie = loginRes.headers.get("set-cookie");
+    const sid = setCookie?.match(/SID=([^;]+)/)?.[1];
+    console.log("qbit SID:", sid);
     if (!sid) throw new Error("no SID cookie in login response");
-    return buildResult(await fetchTorrents(`SID=${sid}`));
+
+    const torrentsRes = await fetch(`${BASE}/api/v2/torrents/info`, {
+      headers: {
+        "Cookie": `SID=${sid}`,
+        "Referer": BASE,
+      },
+      signal: AbortSignal.timeout(5000),
+      next: { revalidate: 0 },
+    });
+    console.log("qbit torrents status:", torrentsRes.status);
+    if (!torrentsRes.ok) throw new Error(`torrents HTTP ${torrentsRes.status}`);
+    const torrents = await torrentsRes.json() as { state: string; dlspeed?: number; size?: number }[];
+    return buildResult(torrents);
   } catch {
     const up = await checkReachable(`${BASE}/api/v2/app/version`);
     return { name: "qbittorrent", up, lines: up ? ["—"] : [] };
@@ -165,46 +175,10 @@ async function overseerr(): Promise<ServiceResult> {
   }
 }
 
-let piholeToken: string | null = null;
-let piholeTokenExpiry = 0;
-
 async function pihole(): Promise<ServiceResult> {
   const BASE = `http://${TRUENAS_IP}:20720`;
-  const password = process.env.PIHOLE_PASSWORD || "***REMOVED***";
-
-  async function getToken(): Promise<string> {
-    const now = Date.now();
-    if (piholeToken && now < piholeTokenExpiry) return piholeToken;
-    const authRes = await fetch(`${BASE}/api/auth`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password, totp: "" }),
-      signal: AbortSignal.timeout(5000),
-      next: { revalidate: 0 },
-    });
-    if (!authRes.ok) throw new Error(`auth HTTP ${authRes.status}`);
-    const authJson = await authRes.json() as { session?: { sid?: string }; data?: { session?: { sid?: string } } };
-    const token = authJson?.session?.sid ?? authJson?.data?.session?.sid;
-    if (!token) throw new Error("no token in auth response");
-    piholeToken = token;
-    piholeTokenExpiry = now + 30 * 60 * 1000;
-    return token;
-  }
-
-  try {
-    const token = await getToken();
-    const data = await apiFetch(`${BASE}/api/stats/summary`, { Authorization: `Bearer ${token}` }) as {
-      queries?: { total?: number; percent_blocked?: number };
-    };
-    const total   = data.queries?.total ?? 0;
-    const blocked = (data.queries?.percent_blocked ?? 0).toFixed(1);
-    return { name: "pihole", up: true, lines: [`${total.toLocaleString()} queries · ${blocked}% blocked`] };
-  } catch {
-    piholeToken = null;
-    piholeTokenExpiry = 0;
-    const up = await checkReachable(BASE);
-    return { name: "pihole", up, lines: up ? ["—"] : [] };
-  }
+  const up = await checkReachable(BASE);
+  return { name: "pihole", up, lines: up ? ["2FA required"] : [] };
 }
 
 async function prowlarr(): Promise<ServiceResult> {
@@ -232,7 +206,6 @@ async function uptimeKuma(): Promise<ServiceResult> {
     if (Array.isArray(obj.monitors)) {
       monitors = obj.monitors;
     } else if (obj.heartbeatList) {
-      // /heartbeat endpoint returns { heartbeatList: { monitorId: [beats] } }
       monitors = Object.values(obj.heartbeatList).map(beats => beats[beats.length - 1] ?? {});
     }
     const upCount   = monitors.filter(m => m.status === 1).length;
@@ -241,18 +214,23 @@ async function uptimeKuma(): Promise<ServiceResult> {
     return { name: "uptimekuma", up: true, lines: [line], downCount };
   }
 
+  // Try public heartbeat endpoint first (no auth required)
+  try {
+    const data = await apiFetch(`${BASE}/api/status-page/heartbeat/default`);
+    return parseMonitors(data);
+  } catch { /* fall through */ }
+
   try {
     const data = await apiFetch(`${BASE}/api/status-page/services`, AUTH);
     return parseMonitors(data);
+  } catch { /* fall through */ }
+
+  try {
+    const data = await apiFetch(`${BASE}/api/status-page/heartbeat/services`, AUTH);
+    return parseMonitors(data);
   } catch {
-    try {
-      // Fallback endpoint some Uptime Kuma versions expose
-      const data = await apiFetch(`${BASE}/api/status-page/heartbeat/services`, AUTH);
-      return parseMonitors(data);
-    } catch {
-      const up = await checkReachable(BASE);
-      return { name: "uptimekuma", up, lines: up ? ["—"] : [] };
-    }
+    const up = await checkReachable(BASE);
+    return { name: "uptimekuma", up, lines: up ? ["—"] : [] };
   }
 }
 
