@@ -111,7 +111,7 @@ async function qbittorrent(): Promise<ServiceResult> {
       t.state === "downloading" || t.state === "forcedDL" || t.state === "stalledDL"
     ).length;
     const seeding      = data.filter(t =>
-      t.state === "uploading" || t.state === "forcedUP"
+      t.state === "uploading" || t.state === "forcedUP" || t.state === "stalledUP"
     ).length;
     const totalDlSpeed = data.reduce((s, t) => s + (t.dlspeed ?? 0), 0);
     const lines = [`${downloading} downloading · ${seeding} seeding · ${data.length} total`];
@@ -175,8 +175,33 @@ async function overseerr(): Promise<ServiceResult> {
 
 async function pihole(): Promise<ServiceResult> {
   const BASE = `http://${TRUENAS_IP}:20720`;
-  const up = await checkReachable(BASE);
-  return { name: "pihole", up, lines: up ? ["2FA enabled · open dashboard"] : [] };
+  const API_KEY = "***REMOVED***";
+  type PiholeSummary = {
+    queries?: { total?: number; blocked?: number; percent_blocked?: number };
+    gravity?: { domains_being_blocked?: number };
+    queries_today?: number;
+    blocked_today?: number;
+    percent_blocked?: number;
+    gravity_size?: number;
+  };
+
+  try {
+    let data: PiholeSummary;
+    try {
+      data = await apiFetch(`${BASE}/api/stats/summary`, { "X-API-Key": API_KEY }) as PiholeSummary;
+    } catch {
+      data = await apiFetch(`${BASE}/api/v6/stats/summary`, { "X-API-Key": API_KEY }) as PiholeSummary;
+    }
+    const total   = data.queries?.total ?? data.queries_today ?? 0;
+    const pct     = (data.queries?.percent_blocked ?? data.percent_blocked ?? 0).toFixed(1);
+    const gravity = data.gravity?.domains_being_blocked ?? data.gravity_size ?? 0;
+    const lines   = [`${total.toLocaleString()} queries · ${pct}% blocked`];
+    if (gravity > 0) lines.push(`${gravity.toLocaleString()} domains blocked`);
+    return { name: "pihole", up: true, lines };
+  } catch {
+    const up = await checkReachable(BASE);
+    return { name: "pihole", up, lines: up ? ["—"] : [] };
+  }
 }
 
 async function prowlarr(): Promise<ServiceResult> {
@@ -212,14 +237,33 @@ async function uptimeKuma(): Promise<ServiceResult> {
     return { name: "uptimekuma", up: true, lines: [line], downCount };
   }
 
+  const AUTH = { Authorization: "Bearer ***REMOVED***" };
+
+  // Try the known "services" slug heartbeat endpoint
   try {
-    // Discover slugs then fetch heartbeats for the first one
-    const list = await apiFetch(`${BASE}/api/status-page/list`) as { slug?: string }[];
-    const slug = Array.isArray(list) ? list[0]?.slug : null;
-    if (slug) {
-      const data = await apiFetch(`${BASE}/api/status-page/heartbeat/${slug}`);
-      const result = parseHeartbeats(data);
-      if (result) return result;
+    const data = await apiFetch(`${BASE}/api/status-page/heartbeat/services`, AUTH);
+    const result = parseHeartbeats(data);
+    if (result) return result;
+  } catch { /* fall through */ }
+
+  // Try the status-page/services endpoint directly
+  try {
+    const data = await apiFetch(`${BASE}/api/status-page/services`, AUTH);
+    const result = parseHeartbeats(data);
+    if (result) return result;
+  } catch { /* fall through */ }
+
+  // Parse Prometheus metrics endpoint
+  try {
+    const res = await fetch(`${BASE}/metrics`, { signal: AbortSignal.timeout(5000), next: { revalidate: 0 } });
+    if (res.ok) {
+      const text = await res.text();
+      const upCount   = (text.match(/monitor_status\{[^}]*\}\s+1/g) ?? []).length;
+      const downCount = (text.match(/monitor_status\{[^}]*\}\s+0/g) ?? []).length;
+      if (upCount + downCount > 0) {
+        const line = downCount > 0 ? `${upCount} up · ${downCount} down` : `${upCount} sites up`;
+        return { name: "uptimekuma", up: true, lines: [line], downCount };
+      }
     }
   } catch { /* fall through */ }
 

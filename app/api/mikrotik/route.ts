@@ -6,12 +6,19 @@ export async function GET() {
     const auth = Buffer.from(creds, "utf8").toString("base64");
     console.log("mikrotik auth base64:", auth);
     const res = await fetch("http://192.168.88.1/rest/system/resource", {
-      headers: { Authorization: "Basic " + auth },
+      method: "GET",
+      headers: {
+        Authorization: "Basic " + auth,
+        Accept: "application/json",
+      },
+      cache: "no-store",
       signal: AbortSignal.timeout(5000),
     });
-    console.log("mikrotik status:", res.status);
+    console.log("Mikrotik status:", res.status);
+    const text = await res.text();
+    console.log("Mikrotik response:", text);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const d = await res.json() as Record<string, unknown>;
+    const d = JSON.parse(text) as Record<string, unknown>;
 
     const str = (k: string): string | null => typeof d[k] === "string" ? d[k] as string : null;
     const num = (k: string): number | null => {
