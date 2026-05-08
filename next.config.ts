@@ -1,11 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
-  // Reduces peak memory during the build phase. Was needed because the
-  // production Docker build on TrueNAS was crashing with SIGSEGV — the
-  // Next.js build worker was getting OOM-killed by Docker's cgroup limits
-  // when SWC + webpack ran across all 28 cores at once.
+  // Standalone mode was previously enabled but removed because the
+  // post-build NFT trace step (which produces the standalone artifact)
+  // crashed with SIGSEGV on TrueNAS. The runner stage now uses
+  // `next start` against the regular .next output instead.
   experimental: {
     webpackMemoryOptimizations: true,
   },
