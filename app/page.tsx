@@ -125,6 +125,12 @@ const SVC_LABELS: Record<string, string> = {
   uptimekuma:  "Uptime Kuma",
 };
 
+// Service grouping for the services panel. Order within each list = render order.
+const SVC_CATEGORIES: { id: string; label: string; services: string[] }[] = [
+  { id: "media", label: "media stack",   services: ["radarr", "sonarr", "bazarr", "tautulli", "qbittorrent", "overseerr", "prowlarr"] },
+  { id: "infra", label: "infrastructure", services: ["pihole", "nginx", "uptimekuma"] },
+];
+
 const BOOKMARKS: { title: string; accentColor: string; items: { name: string; url: string; icon: string }[] }[] = [
   {
     title: "Social",
@@ -591,6 +597,59 @@ function BookmarkItem({ name, url, icon }: { name: string; url: string; icon: st
 }
 
 // ── primitive components ──────────────────────────────────────────────────────
+
+// Animates between value changes with an ease-out cubic, ~600ms. Preserves the
+// formatting of the source string (commas, decimals) by parsing the literal
+// matched in animatedLine() below.
+function AnimatedNumber({ value, decimals = 0, useCommas = true }: { value: number; decimals?: number; useCommas?: boolean }) {
+  const [displayed, setDisplayed] = useState(value);
+  const prevRef = useRef(value);
+  useEffect(() => {
+    const start = prevRef.current;
+    const end   = value;
+    if (start === end) return;
+    const duration = 600;
+    const t0 = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - t0) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplayed(start + (end - start) * eased);
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else prevRef.current = end;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  const out = decimals > 0 ? displayed.toFixed(decimals) : Math.round(displayed).toString();
+  if (!useCommas) return <>{out}</>;
+  // Add thousand separators if the original had them
+  const [whole, frac] = out.split(".");
+  const withCommas = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return <>{frac ? `${withCommas}.${frac}` : withCommas}</>;
+}
+
+// Replaces every numeric literal in `line` with an <AnimatedNumber>. Preserves
+// the surrounding text and the original formatting (commas, decimals).
+function animatedLine(line: string, keyPrefix: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  // Match: 1,234,567 | 1234567 | 33.1
+  const re = /(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)/g;
+  let lastIdx = 0;
+  let i = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(line)) !== null) {
+    if (m.index > lastIdx) parts.push(line.slice(lastIdx, m.index));
+    const literal  = m[0];
+    const useCommas = literal.includes(",");
+    const decimals  = literal.includes(".") ? (literal.split(".")[1].length) : 0;
+    const value     = parseFloat(literal.replace(/,/g, ""));
+    parts.push(<AnimatedNumber key={`${keyPrefix}-n${i++}`} value={value} decimals={decimals} useCommas={useCommas} />);
+    lastIdx = m.index + literal.length;
+  }
+  if (lastIdx < line.length) parts.push(line.slice(lastIdx));
+  return parts;
+}
 
 function GaugeBar({ percent, color, thin = false, gradient }: { percent: number; color: string; thin?: boolean; gradient?: string }) {
   return (
@@ -2126,91 +2185,128 @@ export default function Dashboard() {
               {servicesLoading ? <Skeleton /> : !services ? (
                 <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>unavailable</span>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                  {services.map(({ name, up, lines, pct: svcPct, downCount, queueItem, streams: svcStreams }) => {
-                    const color = SVC_COLORS[name] ?? "#666";
-                    const icon  = SVC_ICONS[name]  ?? "";
-                    const label = SVC_LABELS[name]  ?? name;
-                    const url   = SVC_URLS[name];
+                <div className="flex flex-col gap-5">
+                  {SVC_CATEGORIES.map(cat => {
+                    const catCards = cat.services
+                      .map(svcName => services.find(s => s.name === svcName))
+                      .filter((s): s is NonNullable<typeof s> => Boolean(s));
+                    if (catCards.length === 0) return null;
+                    const upCount = catCards.filter(s => s.up).length;
                     return (
-                      <div key={name}
-                        className="flex flex-col gap-2 cursor-pointer"
-                        onClick={() => url && window.open(url, "_blank")}
-                        onMouseDown={e => (e.currentTarget.style.transform = "scale(0.97)")}
-                        onMouseUp={e => (e.currentTarget.style.transform = "translateY(-2px)")}
-                        style={{
-                          background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
-                          borderRadius: 12, padding: 14, minHeight: 100,
-                          transition: "background 0.15s, transform 0.15s, border-color 0.15s",
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)"; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)"; }}
-                      >
-                        <div className="flex items-center justify-between">
-                          <ServiceIcon src={icon} label={label} color={color} />
-                          <span className="w-1.5 h-1.5 rounded-full shrink-0 animate-pulse-dot"
-                            style={{
-                              background: up ? "#10b981" : "#ef4444",
-                              boxShadow: up ? "0 0 5px #10b98155" : "0 0 4px #ef444455",
-                              animation: up ? "pulseDot 2s ease-in-out infinite" : "none",
-                            }} />
+                      <div key={cat.id} className="flex flex-col gap-3">
+                        {/* Category header with subtle divider line */}
+                        <div className="flex items-center gap-3">
+                          <span className="text-[9px] uppercase" style={{ color: "rgba(255,255,255,0.35)", letterSpacing: "0.2em", fontWeight: 600 }}>
+                            {cat.label}
+                          </span>
+                          <span style={{ flex: 1, height: 1, background: "linear-gradient(to right, rgba(255,255,255,0.08), transparent)" }} />
+                          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.28)", fontVariantNumeric: "tabular-nums" }}>
+                            {upCount}/{catCards.length}
+                          </span>
                         </div>
-                        <span style={{ fontSize: 13, color: up ? "#ffffff" : "rgba(255,255,255,0.3)", fontWeight: 600 }}>{label}</span>
-                        {up && lines.map((line, i) => (
-                          <span key={i} style={{
-                            color: name === "uptimekuma"
-                              ? ((downCount ?? 0) > 0 ? "#ef4444" : "#10b981")
-                              : name === "qbittorrent" && i === 1
-                              ? "#06b6d4"
-                              : "rgba(255,255,255,0.55)",
-                            fontSize: 11, lineHeight: 1.6,
-                          }}>{line}</span>
-                        ))}
-                        {!up && <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>offline</span>}
-                        {/* Radarr: library completion + active download */}
-                        {name === "radarr" && svcPct != null && up && (
-                          <GaugeBar percent={svcPct} color={svcPct > 90 ? "#10b981" : svcPct > 70 ? "#f59e0b" : "#ef4444"} thin />
-                        )}
-                        {name === "radarr" && queueItem && up && (
-                          <div className="flex flex-col gap-1 mt-0.5">
-                            <span style={{
-                              fontSize: 10, fontWeight: 500, color: "#f59e0b",
-                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "90%",
-                            }}>↓ {cleanTitle(queueItem.title)}</span>
-                            <GaugeBar percent={queueItem.pct} color="#f59e0b" thin />
-                          </div>
-                        )}
-                        {/* Sonarr: active download */}
-                        {name === "sonarr" && queueItem && up && (
-                          <div className="flex flex-col gap-1 mt-0.5">
-                            <span style={{
-                              fontSize: 10, fontWeight: 500, color: "#3b82f6",
-                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "90%",
-                            }}>↓ {cleanTitle(queueItem.title)}</span>
-                            <GaugeBar percent={queueItem.pct} color="#3b82f6" thin />
-                          </div>
-                        )}
-                        {/* Tautulli: active streams inline */}
-                        {name === "tautulli" && svcStreams && svcStreams.length > 0 && up && (
-                          <div className="flex flex-col gap-2 mt-0.5">
-                            {svcStreams.slice(0, 3).map((st, si) => (
-                              <div key={si} className="flex flex-col gap-1">
-                                <span style={{
-                                  fontSize: 12, color: "rgba(255,255,255,0.6)",
-                                  fontStyle: "italic",
-                                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                                }}>{st.title}</span>
-                                <div style={{ height: 3, background: "rgba(255,255,255,0.07)", borderRadius: 2 }}>
-                                  <div style={{
-                                    height: "100%", borderRadius: 2,
-                                    width: `${Math.min(100, st.progress)}%`,
-                                    background: "#8b5cf6",
-                                  }} />
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                          {catCards.map(({ name, up, lines, pct: svcPct, downCount, queueItem, streams: svcStreams }) => {
+                            const color = SVC_COLORS[name] ?? "#666";
+                            const icon  = SVC_ICONS[name]  ?? "";
+                            const label = SVC_LABELS[name]  ?? name;
+                            const url   = SVC_URLS[name];
+                            return (
+                              <div key={name}
+                                className="flex flex-col gap-2 cursor-pointer"
+                                onClick={() => url && window.open(url, "_blank")}
+                                onMouseDown={e => (e.currentTarget.style.transform = "scale(0.97)")}
+                                onMouseUp={e => (e.currentTarget.style.transform = "translateY(-2px)")}
+                                style={{
+                                  background: "rgba(255,255,255,0.03)",
+                                  border: "1px solid rgba(255,255,255,0.07)",
+                                  borderTop: `2px solid ${up ? color : "rgba(255,255,255,0.1)"}`,
+                                  borderRadius: 12, padding: "13px 14px 14px",
+                                  minHeight: 100,
+                                  transition: "background 0.15s, transform 0.15s, border-color 0.15s, box-shadow 0.2s",
+                                }}
+                                onMouseEnter={e => {
+                                  e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+                                  e.currentTarget.style.transform = "translateY(-2px)";
+                                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)";
+                                  if (up) e.currentTarget.style.boxShadow = `0 6px 24px ${color}26, 0 0 0 1px ${color}33 inset`;
+                                }}
+                                onMouseLeave={e => {
+                                  e.currentTarget.style.background = "rgba(255,255,255,0.03)";
+                                  e.currentTarget.style.transform = "translateY(0)";
+                                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)";
+                                  e.currentTarget.style.boxShadow = "none";
+                                }}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <ServiceIcon src={icon} label={label} color={color} />
+                                  <span className="w-1.5 h-1.5 rounded-full shrink-0 animate-pulse-dot"
+                                    style={{
+                                      background: up ? "#10b981" : "#ef4444",
+                                      boxShadow: up ? "0 0 5px #10b98155" : "0 0 4px #ef444455",
+                                      animation: up ? "pulseDot 2s ease-in-out infinite" : "none",
+                                    }} />
                                 </div>
+                                <span style={{ fontSize: 13, color: up ? "#ffffff" : "rgba(255,255,255,0.3)", fontWeight: 600 }}>{label}</span>
+                                {up && lines.map((line, i) => (
+                                  <span key={i} style={{
+                                    color: name === "uptimekuma"
+                                      ? ((downCount ?? 0) > 0 ? "#ef4444" : "#10b981")
+                                      : name === "qbittorrent" && i === 1
+                                      ? "#06b6d4"
+                                      : "rgba(255,255,255,0.55)",
+                                    fontSize: 11, lineHeight: 1.6, fontVariantNumeric: "tabular-nums",
+                                  }}>{animatedLine(line, `${name}-${i}`)}</span>
+                                ))}
+                                {!up && <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>offline</span>}
+                                {/* Radarr: library completion + active download */}
+                                {name === "radarr" && svcPct != null && up && (
+                                  <GaugeBar percent={svcPct} color={svcPct > 90 ? "#10b981" : svcPct > 70 ? "#f59e0b" : "#ef4444"} thin />
+                                )}
+                                {name === "radarr" && queueItem && up && (
+                                  <div className="flex flex-col gap-1 mt-0.5">
+                                    <span style={{
+                                      fontSize: 10, fontWeight: 500, color: "#f59e0b",
+                                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "90%",
+                                    }}>↓ {cleanTitle(queueItem.title)}</span>
+                                    <GaugeBar percent={queueItem.pct} color="#f59e0b" thin />
+                                  </div>
+                                )}
+                                {/* Sonarr: active download */}
+                                {name === "sonarr" && queueItem && up && (
+                                  <div className="flex flex-col gap-1 mt-0.5">
+                                    <span style={{
+                                      fontSize: 10, fontWeight: 500, color: "#3b82f6",
+                                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "90%",
+                                    }}>↓ {cleanTitle(queueItem.title)}</span>
+                                    <GaugeBar percent={queueItem.pct} color="#3b82f6" thin />
+                                  </div>
+                                )}
+                                {/* Tautulli: active streams inline */}
+                                {name === "tautulli" && svcStreams && svcStreams.length > 0 && up && (
+                                  <div className="flex flex-col gap-2 mt-0.5">
+                                    {svcStreams.slice(0, 3).map((st, si) => (
+                                      <div key={si} className="flex flex-col gap-1">
+                                        <span style={{
+                                          fontSize: 12, color: "rgba(255,255,255,0.6)",
+                                          fontStyle: "italic",
+                                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                        }}>{st.title}</span>
+                                        <div style={{ height: 3, background: "rgba(255,255,255,0.07)", borderRadius: 2 }}>
+                                          <div style={{
+                                            height: "100%", borderRadius: 2,
+                                            width: `${Math.min(100, st.progress)}%`,
+                                            background: "#8b5cf6",
+                                            transition: "width 0.6s ease-out",
+                                          }} />
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
-                            ))}
-                          </div>
-                        )}
+                            );
+                          })}
+                        </div>
                       </div>
                     );
                   })}
