@@ -48,7 +48,7 @@ async function checkReachable(baseUrl: string): Promise<boolean> {
 }
 
 async function radarr(): Promise<ServiceResult> {
-  const KEY = "***REMOVED***";
+  const KEY = process.env.RADARR_API_KEY ?? "";
   const BASE = `http://${TRUENAS_IP}:30025`;
   try {
     const [moviesData, queueData] = await Promise.all([
@@ -75,7 +75,7 @@ async function radarr(): Promise<ServiceResult> {
 }
 
 async function sonarr(): Promise<ServiceResult> {
-  const KEY = "***REMOVED***";
+  const KEY = process.env.SONARR_API_KEY ?? "";
   const BASE = `http://${TRUENAS_IP}:33027`;
   try {
     const [seriesData, wantedData, queueData] = await Promise.all([
@@ -102,7 +102,7 @@ async function sonarr(): Promise<ServiceResult> {
 }
 
 async function bazarr(): Promise<ServiceResult> {
-  const KEY = "***REMOVED***";
+  const KEY = process.env.BAZARR_API_KEY ?? "";
   const BASE_URL = `http://${TRUENAS_IP}:30046`;
   const HEADERS = { "X-API-KEY": KEY };
 
@@ -142,9 +142,10 @@ function fmtMs(ms: number): string {
 }
 
 async function tautulli(): Promise<ServiceResult> {
+  const KEY = process.env.TAUTULLI_API_KEY ?? "";
   try {
     const data = await apiFetch(
-      `http://${TRUENAS_IP}:30047/api/v2?apikey=***REMOVED***&cmd=get_activity`
+      `http://${TRUENAS_IP}:30047/api/v2?apikey=${KEY}&cmd=get_activity`
     ) as { response: { data: { stream_count: string; sessions?: TautulliSession[] } } };
     const count    = parseInt(data?.response?.data?.stream_count ?? "0", 10);
     const sessions = data?.response?.data?.sessions ?? [];
@@ -194,7 +195,10 @@ async function qbittorrent(): Promise<ServiceResult> {
         "Content-Type": "application/x-www-form-urlencoded",
         "Referer": BASE,
       },
-      body: new URLSearchParams({ username: "admin", password: "***REMOVED***" }).toString(),
+      body: new URLSearchParams({
+        username: process.env.QBIT_USERNAME ?? "",
+        password: process.env.QBIT_PASSWORD ?? "",
+      }).toString(),
       signal: AbortSignal.timeout(5000),
       next: { revalidate: 0 },
     });
@@ -222,7 +226,7 @@ async function qbittorrent(): Promise<ServiceResult> {
 }
 
 async function overseerr(): Promise<ServiceResult> {
-  const KEY = "***REMOVED***";
+  const KEY = process.env.OVERSEERR_API_KEY ?? "";
   try {
     const [pendingData, approvedData, availableData] = await Promise.all([
       apiFetch(`http://${TRUENAS_IP}:30002/api/v1/request?take=1&skip=0&filter=pending`, { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
@@ -250,7 +254,7 @@ async function pihole(): Promise<ServiceResult> {
     const authRes = await fetch(`${BASE}/api/auth`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: "***REMOVED***" }),
+      body: JSON.stringify({ password: process.env.PIHOLE_PASSWORD ?? "" }),
       signal: AbortSignal.timeout(5000),
     });
     const authData = await authRes.json() as { session?: { sid?: string; validity?: number } };
@@ -291,9 +295,10 @@ async function pihole(): Promise<ServiceResult> {
 }
 
 async function prowlarr(): Promise<ServiceResult> {
+  const KEY = process.env.PROWLARR_API_KEY ?? "";
   try {
     const data = await apiFetch(
-      `http://${TRUENAS_IP}:30050/api/v1/indexerstats?apikey=***REMOVED***`
+      `http://${TRUENAS_IP}:30050/api/v1/indexerstats?apikey=${KEY}`
     ) as { indexers?: { numberOfGrabs?: number; numberOfQueries?: number }[] };
     const indexers = data.indexers ?? [];
     const grabs    = indexers.reduce((s, i) => s + (i.numberOfGrabs   ?? 0), 0);
@@ -323,7 +328,7 @@ async function uptimeKuma(): Promise<ServiceResult> {
     return { name: "uptimekuma", up: true, lines: [line], downCount };
   }
 
-  const AUTH = { Authorization: "Bearer ***REMOVED***" };
+  const AUTH = { Authorization: `Bearer ${process.env.UPTIME_KUMA_API_KEY ?? ""}` };
 
   // Try the known "services" slug heartbeat endpoint
   try {
@@ -363,7 +368,10 @@ async function nginxProxy(): Promise<ServiceResult> {
     const tokenRes = await fetch(`${BASE}/api/tokens`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ identity: "***REMOVED***", secret: "***REMOVED***" }),
+      body: JSON.stringify({
+        identity: process.env.NGINX_USERNAME ?? "",
+        secret:   process.env.NGINX_PASSWORD ?? "",
+      }),
       signal: AbortSignal.timeout(5000),
       next: { revalidate: 0 },
     });

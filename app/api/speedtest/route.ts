@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 const TRUENAS_IP = process.env.TRUENAS_IP || "192.168.88.196";
 const BASE        = `http://${TRUENAS_IP}:30220`;
-const BEARER      = "***REMOVED***";
+const BEARER      = process.env.SPEEDTEST_API_KEY ?? "";
 
 interface HistoryRecord {
   id?:         number;

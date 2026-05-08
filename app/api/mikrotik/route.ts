@@ -22,9 +22,9 @@ export async function GET() {
   }
 
   try {
-    const creds = "monitor-only" + ":" + "***REMOVED***";
-    const auth = Buffer.from(creds, "utf8").toString("base64");
-    console.log("mikrotik auth base64:", auth);
+    const user = process.env.MIKROTIK_USERNAME ?? "";
+    const pass = process.env.MIKROTIK_PASSWORD ?? "";
+    const auth = Buffer.from(`${user}:${pass}`, "utf8").toString("base64");
     const res = await fetch("http://192.168.88.1/rest/system/resource", {
       method: "GET",
       headers: {
