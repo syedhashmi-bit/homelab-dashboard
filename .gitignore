@@ -11,12 +11,12 @@ out/
 .claude/
 
 # local development / private notes
-context.md
 memory.md
 skills.md
 CLAUDE.md
 Read-Prompt.txt
 gh
+# context.md is intentionally tracked (env var names only, no secrets)
 
 # production
 build/
