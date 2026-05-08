@@ -1,0 +1,9 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/api/mikrotik/route": "/api/mikrotik",
+  "/api/metrics/route": "/api/metrics",
+  "/api/speedtest/route": "/api/speedtest",
+  "/api/services/route": "/api/services",
+  "/api/weather/route": "/api/weather",
+  "/page": "/"
+}
