@@ -3,14 +3,11 @@ node_modules/
 .pnp
 .pnp.js
 
-# next.js
-# .next/ is intentionally tracked — TrueNAS Docker can't build reliably
-# (Next.js build worker SIGSEGVs non-deterministically on this host), so
-# the build happens on the PC and the prebuilt artifacts are shipped via git.
-# The cache and trace inside .next/ are not needed at runtime, so we still
-# ignore them to keep commits small.
-.next/cache/
-.next/trace
+# next.js — builds happen in CI (GitHub Actions) which doesn't hit the SIGSEGV
+# issue some TrueNAS hosts have, so the production image is pulled from GHCR
+# rather than built per-host. Local dev still produces .next/ — we just don't
+# track it.
+.next/
 out/
 
 # claude code

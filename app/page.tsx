@@ -102,6 +102,29 @@ interface ActivityEvent {
   timestamp: number;
 }
 
+// Mirrors the shape from /api/config (intentionally NOT imported to keep page.tsx
+// independent of server-only modules). Anything in here is safe for the client.
+interface BookmarkColumn {
+  title: string;
+  accentColor: string;
+  items: { name: string; url: string; icon: string }[];
+}
+interface ClientConfig {
+  truenasIp:    string;
+  mikrotikUrl:  string;
+  weather: { lat: string; lon: string };
+  grafana: {
+    baseUrl:        string;
+    panelUrl:       string | null;
+    dashboardUid?:  string;
+    datasourceUid?: string;
+    panelId?:       string;
+  };
+  serviceUrls:  Record<string, string>;
+  bookmarks:    BookmarkColumn[];
+  fsPathPrefix: string;
+}
+
 // ── module constants ──────────────────────────────────────────────────────────
 
 const SVC_COLORS: Record<string, string> = {
@@ -146,59 +169,11 @@ const SVC_CATEGORIES: { id: string; label: string; accent: string; services: str
   { id: "infra", label: "infrastructure", accent: "#06b6d4", services: ["pihole", "nginx", "uptimekuma"] },
 ];
 
-const BOOKMARKS: { title: string; accentColor: string; items: { name: string; url: string; icon: string }[] }[] = [
-  {
-    title: "Social",
-    accentColor: "#06b6d4",
-    items: [
-      { name: "YouTube",     url: "https://www.youtube.com",    icon: "https://www.google.com/s2/favicons?domain=youtube.com&sz=32" },
-      { name: "Facebook",    url: "https://www.facebook.com",   icon: "https://www.google.com/s2/favicons?domain=facebook.com&sz=32" },
-      { name: "Instagram",   url: "https://www.instagram.com",  icon: "https://www.google.com/s2/favicons?domain=instagram.com&sz=32" },
-      { name: "Reddit",      url: "https://www.reddit.com",     icon: "https://www.google.com/s2/favicons?domain=reddit.com&sz=32" },
-      { name: "Twitter / X", url: "https://x.com",             icon: "https://www.google.com/s2/favicons?domain=x.com&sz=32" },
-    ],
-  },
-  {
-    title: "Productivity",
-    accentColor: "#10b981",
-    items: [
-      { name: "ChatGPT",     url: "https://chatgpt.com",                   icon: "https://www.google.com/s2/favicons?domain=chatgpt.com&sz=32" },
-      { name: "OpenwebUI",   url: "http://192.168.88.196",                 icon: "https://www.google.com/s2/favicons?domain=openwebui.com&sz=32" },
-      { name: "Gmail",       url: "https://mail.google.com",               icon: "https://www.google.com/s2/favicons?domain=gmail.com&sz=32" },
-      { name: "Outlook",     url: "https://outlook.live.com",              icon: "https://www.google.com/s2/favicons?domain=outlook.com&sz=32" },
-      { name: "Confluence",  url: "https://syedhashme.atlassian.net",      icon: "https://www.google.com/s2/favicons?domain=atlassian.net&sz=32" },
-      { name: "Bitdefender", url: "https://central.bitdefender.com",       icon: "https://www.google.com/s2/favicons?domain=bitdefender.com&sz=32" },
-      { name: "Coursera",    url: "https://www.coursera.org",              icon: "https://www.google.com/s2/favicons?domain=coursera.org&sz=32" },
-      { name: "LinkedIn",    url: "https://www.linkedin.com",              icon: "https://www.google.com/s2/favicons?domain=linkedin.com&sz=32" },
-    ],
-  },
-  {
-    title: "Entertainment",
-    accentColor: "#f59e0b",
-    items: [
-      { name: "Plex",        url: "https://app.plex.tv",                   icon: "https://www.google.com/s2/favicons?domain=plex.tv&sz=32" },
-      { name: "Overseerr",   url: "http://192.168.88.196:30002",           icon: SVC_ICONS.overseerr },
-      { name: "Tautulli",    url: "http://192.168.88.196:30047",           icon: SVC_ICONS.tautulli },
-      { name: "Radarr",      url: "http://192.168.88.196:30025",           icon: SVC_ICONS.radarr },
-      { name: "Sonarr",      url: "http://192.168.88.196:33027",           icon: SVC_ICONS.sonarr },
-      { name: "Bazarr",      url: "http://192.168.88.196:30046",           icon: SVC_ICONS.bazarr },
-      { name: "Cleanuparr",  url: "http://192.168.88.196",                 icon: "https://www.google.com/s2/favicons?domain=cleanuparr.com&sz=32" },
-    ],
-  },
-  {
-    title: "NaServer",
-    accentColor: "#8b5cf6",
-    items: [
-      { name: "TrueNAS",        url: "http://192.168.88.196",              icon: "https://www.google.com/s2/favicons?domain=truenas.com&sz=32" },
-      { name: "Glances",        url: "http://192.168.88.196:30015",        icon: "https://www.google.com/s2/favicons?domain=nicolargo.github.io&sz=32" },
-      { name: "qBittorrent",    url: "http://192.168.88.196:30024",        icon: SVC_ICONS.qbittorrent },
-      { name: "Open-Speedtest", url: "http://192.168.88.196:30220",        icon: "https://www.google.com/s2/favicons?domain=openspeedtest.com&sz=32" },
-      { name: "PiHole",         url: "http://192.168.88.196:20720",        icon: SVC_ICONS.pihole },
-      { name: "Uptime-Kuma",    url: "http://192.168.88.196:31050",        icon: "https://www.google.com/s2/favicons?domain=uptime.kuma.pet&sz=32" },
-      { name: "JDownloader",    url: "https://my.jdownloader.org",         icon: "https://www.google.com/s2/favicons?domain=jdownloader.org&sz=32" },
-    ],
-  },
-];
+// Fallback only — used briefly while /api/config is fetching, or if the fetch
+// fails. The real bookmark set is loaded at runtime from bookmarks.json (mounted
+// at /app/bookmarks.json in Docker, or BOOKMARKS_PATH env var). See
+// bookmarks.example.json for the schema.
+const BOOKMARKS_FALLBACK: BookmarkColumn[] = [];
 
 // ── client-side data fetching ─────────────────────────────────────────────────
 
@@ -1248,9 +1223,11 @@ interface MtData {
   temp: number | null;
 }
 
-function MikrotikTab() {
+function MikrotikTab({ mikrotikUrl }: { mikrotikUrl: string }) {
   const [data, setData] = useState<MtData | null>(null);
   const [corsBlocked, setCorsBlocked] = useState(false);
+  // Friendly host shown on the static pill — strip protocol so it reads as just an IP/hostname.
+  const mikrotikHost = mikrotikUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
   useEffect(() => {
     async function load() {
@@ -1315,7 +1292,7 @@ function MikrotikTab() {
 
   if (corsBlocked || !data) {
     return (
-      <a href="http://192.168.88.1" target="_blank" rel="noopener noreferrer"
+      <a href={mikrotikUrl} target="_blank" rel="noopener noreferrer"
         className="flex items-center gap-4 w-full overflow-x-auto"
         style={{
           background: "rgba(15,18,30,0.9)", border: "1px solid rgba(255,255,255,0.08)",
@@ -1340,7 +1317,7 @@ function MikrotikTab() {
         {staticSep()}
         {staticPill("RouterOS", "7.22.1")}
         {staticSep()}
-        {staticPill("IP", "192.168.88.1")}
+        {staticPill("IP", mikrotikHost)}
         {staticSep()}
         {staticPill("CPU", "—")}
         {staticSep()}
@@ -1357,7 +1334,7 @@ function MikrotikTab() {
   const hddPct = data.hddTotal && data.hddUsed ? (data.hddUsed / data.hddTotal) * 100 : 0;
 
   return (
-    <a href="http://192.168.88.1" target="_blank" rel="noopener noreferrer"
+    <a href={mikrotikUrl} target="_blank" rel="noopener noreferrer"
       className="flex items-center gap-4 w-full overflow-x-auto"
       style={{
         background: "rgba(15,18,30,0.9)", border: "1px solid rgba(255,255,255,0.08)",
@@ -1392,10 +1369,7 @@ function MikrotikTab() {
 
 // ── GrafanaCard ───────────────────────────────────────────────────────────────
 
-const GRAFANA_BASE  = "http://192.168.88.196:30037";
-const GRAFANA_PANEL = `${GRAFANA_BASE}/d-solo/rYdddlPWk/node-exporter-full?orgId=1&from=now-24h&to=now&timezone=browser&var-ds_prometheus=cflfv1hjeg9vka&var-job=node&var-nodename=truenas&var-node=truenas&refresh=1m&panelId=panel-77&theme=dark`;
-
-function GrafanaCard() {
+function GrafanaCard({ baseUrl, panelUrl }: { baseUrl: string; panelUrl: string | null }) {
   const [loaded, setLoaded] = useState(false);
 
   return (
@@ -1409,11 +1383,11 @@ function GrafanaCard() {
         <div className="flex items-center gap-2">
           <span style={{ color: "#f97316" }}><IconGrafana /></span>
           <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.45)", letterSpacing: "0.15em" }}>grafana</span>
-          {!loaded && (
+          {panelUrl && !loaded && (
             <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.2)" }}>loading…</span>
           )}
         </div>
-        <a href={GRAFANA_BASE} target="_blank" rel="noopener noreferrer"
+        <a href={baseUrl} target="_blank" rel="noopener noreferrer"
           className="text-[10px]"
           style={{ color: "rgba(255,255,255,0.3)", textDecoration: "none", transition: "color 0.15s" }}
           onMouseEnter={e => (e.currentTarget.style.color = "#f97316")}
@@ -1422,7 +1396,23 @@ function GrafanaCard() {
         </a>
       </div>
 
-      {/* Loading skeleton shown until iframe fires onLoad */}
+      {/* Setup-required state when panelUrl is null (env vars not configured). */}
+      {!panelUrl ? (
+        <div style={{
+          position: "relative", height: 220, borderRadius: 8,
+          background: "rgba(255,255,255,0.02)",
+          border: "1px dashed rgba(255,255,255,0.08)",
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
+          padding: 18, textAlign: "center",
+        }}>
+          <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+            Grafana embed not configured.
+          </span>
+          <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.25)", maxWidth: 360, lineHeight: 1.5 }}>
+            Set <code style={{ color: "rgba(249,115,22,0.85)" }}>GRAFANA_DASHBOARD_UID</code> and <code style={{ color: "rgba(249,115,22,0.85)" }}>GRAFANA_DATASOURCE_UID</code> env vars to render a panel here.
+          </span>
+        </div>
+      ) : (
       <div style={{ position: "relative", height: 220 }}>
         {!loaded && (
           <div style={{
@@ -1434,7 +1424,7 @@ function GrafanaCard() {
           </div>
         )}
         <iframe
-          src={GRAFANA_PANEL}
+          src={panelUrl}
           width="100%"
           height="220"
           frameBorder={0}
@@ -1446,6 +1436,7 @@ function GrafanaCard() {
           onLoad={() => setLoaded(true)}
         />
       </div>
+      )}
     </div>
   );
 }
@@ -1595,6 +1586,7 @@ export default function Dashboard() {
   const [servicesUpdatedAt,  setServicesUpdatedAt]  = useState<number | null>(null);
   const [activityEvents,     setActivityEvents]     = useState<ActivityEvent[]>([]);
   const [activityLoading,    setActivityLoading]    = useState(true);
+  const [clientConfig,       setClientConfig]       = useState<ClientConfig | null>(null);
   const [speedtestResults,    setSpeedtestResults]    = useState<SpeedtestResult[]>([]);
   const [speedtestLoading,    setSpeedtestLoading]    = useState(true);
   const [speedtestHistory,    setSpeedtestHistory]    = useState<number[]>([]);
@@ -1730,6 +1722,16 @@ export default function Dashboard() {
     const id = setInterval(fetchActivity, 60_000);
     return () => clearInterval(id);
   }, [fetchActivity]);
+
+  // Client config — fetched once on mount. Provides runtime values for the
+  // bookmarks list, service URLs, mikrotik URL, and Grafana embed config so
+  // the same image works for any user with their own env vars / bookmarks.json.
+  useEffect(() => {
+    fetch("/api/config", { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then((cfg: ClientConfig | null) => { if (cfg) setClientConfig(cfg); })
+      .catch(() => { /* keep clientConfig null; UI uses hardcoded fallbacks */ });
+  }, []);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
@@ -1883,7 +1885,7 @@ export default function Dashboard() {
           <GoogleSearch inputRef={searchInputRef} />
 
           {/* ── mikrotik tab ── */}
-          <MikrotikTab />
+          <MikrotikTab mikrotikUrl={clientConfig?.mikrotikUrl ?? "http://192.168.88.1"} />
 
           {/* ── status banner ── */}
           {!loading && showHealth && health.status !== "healthy" && (
@@ -2379,7 +2381,10 @@ export default function Dashboard() {
                 )}
 
                 {isVisible("grafana") && (
-                  <GrafanaCard />
+                  <GrafanaCard
+                    baseUrl={clientConfig?.grafana.baseUrl ?? `http://${clientConfig?.truenasIp ?? "localhost"}:30037`}
+                    panelUrl={clientConfig?.grafana.panelUrl ?? null}
+                  />
                 )}
               </div>
             )}
@@ -2508,7 +2513,7 @@ export default function Dashboard() {
                             const color = SVC_COLORS[name] ?? "#666";
                             const icon  = SVC_ICONS[name]  ?? "";
                             const label = SVC_LABELS[name]  ?? name;
-                            const url   = SVC_URLS[name];
+                            const url   = clientConfig?.serviceUrls?.[name] ?? SVC_URLS[name];
                             const stripeColor = up ? color : "rgba(255,255,255,0.12)";
                             return (
                               <div key={name}
@@ -2668,7 +2673,7 @@ export default function Dashboard() {
                 <span style={{ fontSize: 9, color: "rgba(255,255,255,0.18)", marginLeft: "auto" }}>H to toggle</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {BOOKMARKS.map(col => (
+                {(clientConfig?.bookmarks ?? BOOKMARKS_FALLBACK).map(col => (
                   <div key={col.title} className="flex flex-col gap-0.5">
                     <div className="flex items-center gap-2 mb-2 pb-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ background: col.accentColor }} />

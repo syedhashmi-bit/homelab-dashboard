@@ -1,0 +1,27 @@
+[
+  {
+    "title": "Social",
+    "accentColor": "#06b6d4",
+    "items": [
+      { "name": "YouTube",    "url": "https://www.youtube.com", "icon": "https://www.google.com/s2/favicons?domain=youtube.com&sz=32" },
+      { "name": "Reddit",     "url": "https://www.reddit.com",  "icon": "https://www.google.com/s2/favicons?domain=reddit.com&sz=32"  }
+    ]
+  },
+  {
+    "title": "Productivity",
+    "accentColor": "#10b981",
+    "items": [
+      { "name": "ChatGPT",    "url": "https://chatgpt.com",     "icon": "https://www.google.com/s2/favicons?domain=chatgpt.com&sz=32" },
+      { "name": "Gmail",      "url": "https://mail.google.com", "icon": "https://www.google.com/s2/favicons?domain=gmail.com&sz=32"   },
+      { "name": "GitHub",     "url": "https://github.com",      "icon": "https://www.google.com/s2/favicons?domain=github.com&sz=32"  }
+    ]
+  },
+  {
+    "title": "Homelab",
+    "accentColor": "#8b5cf6",
+    "items": [
+      { "name": "TrueNAS",    "url": "http://truenas.local",    "icon": "https://www.google.com/s2/favicons?domain=truenas.com&sz=32"   },
+      { "name": "Plex",       "url": "https://app.plex.tv",     "icon": "https://www.google.com/s2/favicons?domain=plex.tv&sz=32"        }
+    ]
+  }
+]

@@ -1,0 +1,53 @@
+[
+  {
+    "title": "Social",
+    "accentColor": "#06b6d4",
+    "items": [
+      { "name": "YouTube",     "url": "https://www.youtube.com",   "icon": "https://www.google.com/s2/favicons?domain=youtube.com&sz=32"   },
+      { "name": "Facebook",    "url": "https://www.facebook.com",  "icon": "https://www.google.com/s2/favicons?domain=facebook.com&sz=32"  },
+      { "name": "Instagram",   "url": "https://www.instagram.com", "icon": "https://www.google.com/s2/favicons?domain=instagram.com&sz=32" },
+      { "name": "Reddit",      "url": "https://www.reddit.com",    "icon": "https://www.google.com/s2/favicons?domain=reddit.com&sz=32"    },
+      { "name": "Twitter / X", "url": "https://x.com",             "icon": "https://www.google.com/s2/favicons?domain=x.com&sz=32"         }
+    ]
+  },
+  {
+    "title": "Productivity",
+    "accentColor": "#10b981",
+    "items": [
+      { "name": "ChatGPT",     "url": "https://chatgpt.com",                "icon": "https://www.google.com/s2/favicons?domain=chatgpt.com&sz=32"     },
+      { "name": "OpenwebUI",   "url": "http://192.168.88.196",              "icon": "https://www.google.com/s2/favicons?domain=openwebui.com&sz=32"   },
+      { "name": "Gmail",       "url": "https://mail.google.com",            "icon": "https://www.google.com/s2/favicons?domain=gmail.com&sz=32"       },
+      { "name": "Outlook",     "url": "https://outlook.live.com",           "icon": "https://www.google.com/s2/favicons?domain=outlook.com&sz=32"     },
+      { "name": "Confluence",  "url": "https://syedhashme.atlassian.net",   "icon": "https://www.google.com/s2/favicons?domain=atlassian.net&sz=32"   },
+      { "name": "Bitdefender", "url": "https://central.bitdefender.com",    "icon": "https://www.google.com/s2/favicons?domain=bitdefender.com&sz=32" },
+      { "name": "Coursera",    "url": "https://www.coursera.org",           "icon": "https://www.google.com/s2/favicons?domain=coursera.org&sz=32"    },
+      { "name": "LinkedIn",    "url": "https://www.linkedin.com",           "icon": "https://www.google.com/s2/favicons?domain=linkedin.com&sz=32"    }
+    ]
+  },
+  {
+    "title": "Entertainment",
+    "accentColor": "#f59e0b",
+    "items": [
+      { "name": "Plex",        "url": "https://app.plex.tv",                "icon": "https://www.google.com/s2/favicons?domain=plex.tv&sz=32"          },
+      { "name": "Overseerr",   "url": "http://192.168.88.196:30002",        "icon": "https://www.google.com/s2/favicons?domain=overseerr.dev&sz=32"   },
+      { "name": "Tautulli",    "url": "http://192.168.88.196:30047",        "icon": "https://www.google.com/s2/favicons?domain=tautulli.com&sz=32"    },
+      { "name": "Radarr",      "url": "http://192.168.88.196:30025",        "icon": "https://www.google.com/s2/favicons?domain=radarr.video&sz=32"    },
+      { "name": "Sonarr",      "url": "http://192.168.88.196:33027",        "icon": "https://www.google.com/s2/favicons?domain=sonarr.tv&sz=32"       },
+      { "name": "Bazarr",      "url": "http://192.168.88.196:30046",        "icon": "https://www.google.com/s2/favicons?domain=bazarr.media&sz=32"    },
+      { "name": "Cleanuparr",  "url": "http://192.168.88.196",              "icon": "https://www.google.com/s2/favicons?domain=cleanuparr.com&sz=32"  }
+    ]
+  },
+  {
+    "title": "NaServer",
+    "accentColor": "#8b5cf6",
+    "items": [
+      { "name": "TrueNAS",        "url": "http://192.168.88.196",            "icon": "https://www.google.com/s2/favicons?domain=truenas.com&sz=32"       },
+      { "name": "Glances",        "url": "http://192.168.88.196:30015",      "icon": "https://www.google.com/s2/favicons?domain=nicolargo.github.io&sz=32" },
+      { "name": "qBittorrent",    "url": "http://192.168.88.196:30024",      "icon": "https://www.google.com/s2/favicons?domain=qbittorrent.org&sz=32"   },
+      { "name": "Open-Speedtest", "url": "http://192.168.88.196:30220",      "icon": "https://www.google.com/s2/favicons?domain=openspeedtest.com&sz=32" },
+      { "name": "PiHole",         "url": "http://192.168.88.196:20720",      "icon": "https://www.google.com/s2/favicons?domain=pi-hole.net&sz=32"       },
+      { "name": "Uptime-Kuma",    "url": "http://192.168.88.196:31050",      "icon": "https://www.google.com/s2/favicons?domain=uptime.kuma.pet&sz=32"   },
+      { "name": "JDownloader",    "url": "https://my.jdownloader.org",       "icon": "https://www.google.com/s2/favicons?domain=jdownloader.org&sz=32"  }
+    ]
+  }
+]

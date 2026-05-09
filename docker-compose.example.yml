@@ -1,0 +1,77 @@
+# Example docker-compose.yml — copy to docker-compose.yml, fill in real values.
+#
+# Quick start:
+#   1. cp docker-compose.example.yml docker-compose.yml
+#   2. cp bookmarks.example.json bookmarks.json && edit it
+#   3. Edit the env values below
+#   4. docker compose up -d
+#
+# Image is published from this repo's main branch by GitHub Actions.
+
+services:
+  homelab-dashboard:
+    image: ghcr.io/syedhashmi-bit/homelab-dashboard:latest
+    container_name: homelab-dashboard
+    restart: unless-stopped
+    # Use host networking so the dashboard can reach internal services on
+    # 192.168.88.x without extra port-mapping or DNS plumbing. If you'd
+    # rather use a bridge network, replace `network_mode: host` with a
+    # `ports: ["3000:3000"]` block.
+    network_mode: host
+
+    # Mount your bookmarks file. Without this mount the dashboard ships a
+    # generic default set. Edit bookmarks.example.json to start.
+    volumes:
+      - ./bookmarks.json:/app/bookmarks.json:ro
+
+    environment:
+      # ── Network / hosts ───────────────────────────────────────────────
+      # The base IP every per-service URL falls back to. Override individual
+      # services below if any of them live on a different host.
+      TRUENAS_IP: 192.168.88.196
+
+      # Override per-service if you don't use the default ports. Most
+      # users won't need any of these.
+      # RADARR_URL:      http://192.168.88.196:30025
+      # SONARR_URL:      http://192.168.88.196:33027
+      # ...
+
+      # MikroTik router. Defaults to http://192.168.88.1.
+      MIKROTIK_URL:      http://192.168.88.1
+
+      # ── Credentials ───────────────────────────────────────────────────
+      # Rotate any of these on the upstream service — the dashboard only
+      # reads them, never modifies them.
+      RADARR_API_KEY:    your-radarr-key
+      SONARR_API_KEY:    your-sonarr-key
+      BAZARR_API_KEY:    your-bazarr-key
+      TAUTULLI_API_KEY:  your-tautulli-key
+      PROWLARR_API_KEY:  your-prowlarr-key
+      OVERSEERR_API_KEY: your-overseerr-key
+      QBIT_USERNAME:     admin
+      QBIT_PASSWORD:     your-qbit-password
+      PIHOLE_PASSWORD:   your-pihole-password
+      NGINX_USERNAME:    you@example.com
+      NGINX_PASSWORD:    your-npm-password
+      UPTIME_KUMA_API_KEY: your-uptime-kuma-bearer
+      MIKROTIK_USERNAME: monitor-only
+      MIKROTIK_PASSWORD: your-mikrotik-password
+      SPEEDTEST_API_KEY: your-speedtracker-bearer
+
+      # ── Grafana embed (optional) ──────────────────────────────────────
+      # Without these the Grafana card renders a "not configured" hint
+      # instead of a broken iframe. Find the UIDs in Grafana's URLs.
+      # GRAFANA_BASE_URL:       http://192.168.88.196:30037
+      # GRAFANA_DASHBOARD_UID:  rYdddlPWk
+      # GRAFANA_DATASOURCE_UID: cflfv1hjeg9vka
+      # GRAFANA_PANEL_ID:       panel-77
+      # GRAFANA_DASHBOARD_SLUG: node-exporter-full
+
+      # ── Filesystem labels (PromQL filters) ────────────────────────────
+      # FS_PATH_PREFIX:        /mnt/Pool/Media/
+      # POOL_PATH:             /mnt/Pool
+      # NETWORK_DEVICE_EXCLUDE: lo|veth.*|docker.*|br.*
+
+      # ── Weather coordinates ───────────────────────────────────────────
+      # WEATHER_LAT: -41.4419
+      # WEATHER_LON: 147.1450

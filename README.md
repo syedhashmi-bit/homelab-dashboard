@@ -87,86 +87,49 @@ The entire frontend is one file: **`app/page.tsx`** (~2 200 lines). All primitiv
 
 ---
 
-## Setup
+## Install
 
-### Prerequisites
+A prebuilt image is published to **`ghcr.io/syedhashmi-bit/homelab-dashboard:latest`** by GitHub Actions. You don't need to clone or build the repo to run it.
 
-- Node 20+ on your dev machine
-- A Prometheus instance with `node_exporter` and `nvidia_gpu_exporter` (optional)
-- The homelab services you want to monitor reachable on the same LAN
-- Docker on the deploy host
+> **Full install guide is in [INSTALL.md](./INSTALL.md)** — TrueNAS Custom App walkthrough, docker-compose, plain `docker run`, bookmarks customization, Grafana embed setup, and troubleshooting.
 
-### 1. Configure env vars
-
-Copy the template and fill in your real values:
+### Quick start (docker compose)
 
 ```bash
-cp .env.local.example .env.local
+curl -O https://raw.githubusercontent.com/syedhashmi-bit/homelab-dashboard/main/docker-compose.example.yml
+curl -O https://raw.githubusercontent.com/syedhashmi-bit/homelab-dashboard/main/bookmarks.example.json
+mv docker-compose.example.yml docker-compose.yml
+mv bookmarks.example.json     bookmarks.json
+$EDITOR docker-compose.yml      # fill in your env vars
+$EDITOR bookmarks.json          # customize bookmarks
+docker compose up -d
 ```
 
-Edit `.env.local` with your service API keys / credentials. **Server-side only — never prefix with `NEXT_PUBLIC_`.** Full env-var inventory is in [`context.md`](./context.md).
+Visit `http://<your-host>:3000`.
 
-### 2. Adapt to your own infrastructure
+### Configuration model
 
-Most addresses are env-var driven (via `TRUENAS_IP`), but the following are hardcoded — edit them for your setup:
+- **Required env vars**: `TRUENAS_IP` and the API keys for whichever services you actually use. Full list in [`.env.local.example`](./.env.local.example).
+- **Optional env vars**: per-service URLs (default to `${TRUENAS_IP}:<port>`), Grafana embed UIDs, weather coords, filesystem paths, etc.
+- **Mountable bookmarks file**: `-v /your/path/bookmarks.json:/app/bookmarks.json:ro`. Schema in [`bookmarks.example.json`](./bookmarks.example.json).
+- **No secrets ever in the image**: all credentials are read from env vars at runtime.
 
-| File | What to change |
-|---|---|
-| `app/api/metrics/route.ts` | Network interface name (`enp4s0`), ZFS pool path |
-| `app/api/services/route.ts` | Service ports if yours differ from the defaults |
-| `app/api/speedtest/route.ts` | SpeedTracker base URL if not on `${TRUENAS_IP}:30220` |
-| `app/api/weather/route.ts` | `lat` / `lon` (currently Launceston, TAS) |
-| `app/api/mikrotik/route.ts` | Router IP if not `192.168.88.1` |
-| `app/page.tsx` | `BOOKMARKS` constant · `GRAFANA_PANEL` URL · service categories |
+---
 
-Only filesystems under `/mnt/Pool/Media/` are shown by default — update the filter in `app/api/metrics/route.ts` for your pool layout.
+## Local development
 
-### 3. Run locally
+If you want to hack on the code rather than just run the published image:
 
 ```powershell
 # PC (PowerShell)
 npm install
+cp .env.local.example .env.local       # edit with your real values
 npm run dev      # localhost:3000
-npm run build    # production build (always run before deploying — see below)
+npm run build    # production build
 npm run lint
 ```
 
----
-
-## Build & deploy
-
-> **Note:** This repo uses a slightly unusual workflow — the production build happens on the PC and the prebuilt `.next/` ships via git. The Dockerfile is **runtime-only**.
->
-> Why: `next build` SIGSEGVs non-deterministically inside Docker on certain hosts (intermittent SWC/cgroup interaction). Building on the PC fully sidesteps it. Full diagnostic trail in [`memory.md`](./memory.md) → "Build moved off Docker".
-
-```powershell
-# PC (PowerShell) — every code change
-npm run build                    # produces .next/ (which is git-tracked)
-git add .next app/<changed>
-git commit -m "..."
-git push
-```
-
-```bash
-# Server (bash)
-./update-dashboard.sh            # git pull + docker build + docker run
-```
-
-A reference `update-dashboard.sh` is included in the deploy notes — it `git fetch && git reset --hard origin/main`s the repo, rebuilds the runtime image, and starts the container with all required env vars passed via `-e` flags. **No secret values ever live in the image.**
-
-### Docker manually
-
-```bash
-docker build -t homelab-dashboard .
-docker run -d \
-  --name homelab-dashboard \
-  --network host \
-  --restart unless-stopped \
-  -e TRUENAS_IP=192.168.88.196 \
-  -e RADARR_API_KEY=... \
-  # ... rest of env vars (see .env.local.example)
-  homelab-dashboard
-```
+Push to `main` triggers a fresh GHCR image build via GitHub Actions (`.github/workflows/build.yml`). Pin to a specific version via `:v1.2.3` or `:sha-abc1234` for stability.
 
 ---
 
@@ -226,21 +189,26 @@ Memory uses `MemTotal − MemAvailable − SReclaimable` so ZFS ARC (which is re
 .
 ├── app/
 │   ├── api/
+│   │   ├── activity/route.ts     Sonarr/Radarr/Tautulli history → activity ticker
+│   │   ├── config/route.ts       Runtime client config (bookmarks, URLs, Grafana embed)
 │   │   ├── metrics/route.ts      Prometheus proxy
-│   │   ├── services/route.ts     10-service health checks
 │   │   ├── mikrotik/route.ts     Router stats
+│   │   ├── services/route.ts     10-service health checks
 │   │   ├── speedtest/route.ts    SpeedTracker history
 │   │   └── weather/route.ts      open-meteo proxy
 │   ├── globals.css               Keyframes, font imports
 │   ├── layout.tsx                Root layout
-│   └── page.tsx                  Entire dashboard UI (~2 200 lines)
-├── .next/                        Prebuilt artifacts (tracked — see "Build & deploy")
-├── .env.local.example            Env var template
+│   └── page.tsx                  Entire dashboard UI (~2 300 lines)
+├── .github/workflows/build.yml   CI: build image and push to GHCR
+├── .env.local.example            Env var template (full inventory)
+├── bookmarks.example.json        Schema for the bookmarks file
+├── docker-compose.example.yml    Reference compose config
+├── INSTALL.md                    Step-by-step install guide
 ├── CLAUDE.md                     Authoritative architecture / conventions doc
 ├── context.md                    Infra inventory, env var names, ports
 ├── memory.md                     Past decisions, bug fixes, gotchas
 ├── skills.md                     Reusable code patterns
-├── Dockerfile                    Runtime-only image
+├── Dockerfile                    Multi-stage build (deps → builder → runner)
 ├── next.config.ts
 ├── tailwind.config.ts
 └── tsconfig.json

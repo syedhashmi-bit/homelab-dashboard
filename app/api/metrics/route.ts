@@ -1,7 +1,16 @@
 import { NextResponse } from "next/server";
 
 const TRUENAS_IP = process.env.TRUENAS_IP || "192.168.88.196";
-const PROMETHEUS = `http://${TRUENAS_IP}:30104`;
+const PROMETHEUS = process.env.PROMETHEUS_URL ?? `http://${TRUENAS_IP}:30104`;
+
+// Per-deployment paths and filters. Defaults match the original homelab setup;
+// override at deploy time for a different ZFS pool or non-standard mountpoints.
+const FS_PATH_PREFIX = process.env.FS_PATH_PREFIX ?? "/mnt/Pool/Media/";
+const POOL_PATH      = process.env.POOL_PATH      ?? "/mnt/Pool";
+
+// PromQL fragments. Keep the network-exclude in sync with whatever virtual
+// interfaces should NOT count as "real" traffic on the host.
+const NET_EXCLUDE = process.env.NETWORK_DEVICE_EXCLUDE ?? "lo|veth.*|docker.*|br.*";
 
 let metricsCache: { data: unknown; ts: number } | null = null;
 // Slightly under the client poll interval (3s) so each poll gets fresh data
@@ -84,8 +93,8 @@ export async function GET() {
     query(`time() - node_boot_time_seconds`),
     queryAll(`node_filesystem_size_bytes{${FS_EXCLUDE}}`),
     queryAll(`node_filesystem_avail_bytes{${FS_EXCLUDE}}`),
-    queryAll(`rate(node_network_receive_bytes_total{device!~"lo|veth.*|docker.*|br.*"}[2m])`),
-    queryAll(`rate(node_network_transmit_bytes_total{device!~"lo|veth.*|docker.*|br.*"}[2m])`),
+    queryAll(`rate(node_network_receive_bytes_total{device!~"${NET_EXCLUDE}"}[2m])`),
+    queryAll(`rate(node_network_transmit_bytes_total{device!~"${NET_EXCLUDE}"}[2m])`),
     query(`nvidia_smi_utilization_gpu_ratio`),
     query(`nvidia_smi_memory_used_bytes`),
     query(`nvidia_smi_memory_total_bytes`),
@@ -93,8 +102,8 @@ export async function GET() {
     query(`nvidia_smi_power_draw_watts`),
     query(`nvidia_smi_power_limit_watts`),
     queryAll(`nvidia_smi_gpu_info`),
-    query(`sum(node_network_receive_bytes_total{device!~"lo|veth.*|docker.*|br.*"})`),
-    query(`sum(node_network_transmit_bytes_total{device!~"lo|veth.*|docker.*|br.*"})`),
+    query(`sum(node_network_receive_bytes_total{device!~"${NET_EXCLUDE}"})`),
+    query(`sum(node_network_transmit_bytes_total{device!~"${NET_EXCLUDE}"})`),
     queryAll(`node_uname_info`),
     query(`count(node_cpu_seconds_total{mode="idle"})`),
     // new
@@ -152,7 +161,7 @@ export async function GET() {
 
   const availMap = new Map(diskAvailResults.map((r) => [r.metric.mountpoint, r.value]));
   const disks = diskSizeResults
-    .filter((r) => r.metric.mountpoint != null && r.metric.mountpoint.startsWith("/mnt/Pool/Media/"))
+    .filter((r) => r.metric.mountpoint != null && r.metric.mountpoint.startsWith(FS_PATH_PREFIX))
     .map((r) => {
       const total = r.value;
       const avail = availMap.get(r.metric.mountpoint) ?? 0;
@@ -167,9 +176,9 @@ export async function GET() {
     })
     .sort((a, b) => a.mountpoint.localeCompare(b.mountpoint));
 
-  // Also grab total pool size from /mnt/Pool (non-Media)
-  const poolEntry = diskSizeResults.find(r => r.metric.mountpoint === "/mnt/Pool");
-  const poolAvail  = poolEntry ? (availMap.get("/mnt/Pool") ?? 0) : null;
+  // Also grab total pool size from the configured pool root (non-dataset path).
+  const poolEntry = diskSizeResults.find(r => r.metric.mountpoint === POOL_PATH);
+  const poolAvail  = poolEntry ? (availMap.get(POOL_PATH) ?? 0) : null;
   const poolSize   = poolEntry?.value ?? null;
   const poolUsed   = poolSize != null && poolAvail != null ? poolSize - poolAvail : null;
 

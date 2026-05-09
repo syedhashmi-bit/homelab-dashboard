@@ -1,8 +1,6 @@
-# build artifacts
-# .next is intentionally NOT ignored — we ship the prebuilt output.
-# Cache and trace inside .next aren't needed at runtime, ignore them.
-.next/cache
-.next/trace
+# build artifacts — the image build runs `npm run build` itself, so any
+# pre-existing .next/ in the working directory is irrelevant.
+.next
 node_modules
 npm-debug.log
 tsconfig.tsbuildinfo
@@ -14,13 +12,14 @@ tsconfig.tsbuildinfo
 # docker meta
 Dockerfile
 .dockerignore
+docker-compose*.yml
 
-# local dev / private notes
+# CI
+.github
+
+# local dev / private notes (not needed at runtime, never sensitive in repo)
 *.md
 .env*
 .claude
-context.md
-memory.md
-skills.md
 Read-Prompt.txt
 gh

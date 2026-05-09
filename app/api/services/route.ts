@@ -31,6 +31,20 @@ let piholeSession: { sid: string; expiry: number } | null = null;
 
 const TRUENAS_IP = process.env.TRUENAS_IP || "192.168.88.196";
 
+// Per-service base URLs. Default to ${TRUENAS_IP}:<standard-port> for back-compat
+// with the original deployment. Override any of these at deploy time if your
+// services live elsewhere or use non-standard ports.
+const RADARR_URL      = process.env.RADARR_URL      ?? `http://${TRUENAS_IP}:30025`;
+const SONARR_URL      = process.env.SONARR_URL      ?? `http://${TRUENAS_IP}:33027`;
+const BAZARR_URL      = process.env.BAZARR_URL      ?? `http://${TRUENAS_IP}:30046`;
+const TAUTULLI_URL    = process.env.TAUTULLI_URL    ?? `http://${TRUENAS_IP}:30047`;
+const QBIT_URL        = process.env.QBIT_URL        ?? `http://${TRUENAS_IP}:30024`;
+const OVERSEERR_URL   = process.env.OVERSEERR_URL   ?? `http://${TRUENAS_IP}:30002`;
+const PIHOLE_URL      = process.env.PIHOLE_URL      ?? `http://${TRUENAS_IP}:20720`;
+const PROWLARR_URL    = process.env.PROWLARR_URL    ?? `http://${TRUENAS_IP}:30050`;
+const NGINX_URL       = process.env.NGINX_URL       ?? `http://${TRUENAS_IP}:30020`;
+const UPTIME_KUMA_URL = process.env.UPTIME_KUMA_URL ?? `http://${TRUENAS_IP}:31050`;
+
 function fmtMB(b: number): string {
   if (b === 0) return "0 B";
   if (b < 1e6) return `${(b/1e3).toFixed(0)} KB`;
@@ -110,7 +124,7 @@ function summarizeHealth(records: ArrHealthRecord[] | null): HealthSummary | und
 
 async function radarr(): Promise<ServiceResult> {
   const KEY = process.env.RADARR_API_KEY ?? "";
-  const BASE = `http://${TRUENAS_IP}:30025`;
+  const BASE = RADARR_URL;
   try {
     // Primary call (movies) is required. The rest are enrichment — failures don't sink the card.
     const moviesData = await apiFetch(`${BASE}/api/v3/movie?apiKey=${KEY}`) as RadarrMovie[];
@@ -157,7 +171,7 @@ interface SonarrSeries {
 }
 async function sonarr(): Promise<ServiceResult> {
   const KEY = process.env.SONARR_API_KEY ?? "";
-  const BASE = `http://${TRUENAS_IP}:33027`;
+  const BASE = SONARR_URL;
   try {
     // Series request must succeed; rest are enrichment.
     const seriesData = await apiFetch(
@@ -202,7 +216,7 @@ async function sonarr(): Promise<ServiceResult> {
 
 async function bazarr(): Promise<ServiceResult> {
   const KEY = process.env.BAZARR_API_KEY ?? "";
-  const BASE_URL = `http://${TRUENAS_IP}:30046`;
+  const BASE_URL = BAZARR_URL;
   const HEADERS = { "X-API-KEY": KEY };
 
   try {
@@ -252,7 +266,7 @@ interface TautulliHomeStat {
 }
 async function tautulli(): Promise<ServiceResult> {
   const KEY = process.env.TAUTULLI_API_KEY ?? "";
-  const BASE = `http://${TRUENAS_IP}:30047/api/v2`;
+  const BASE = `${TAUTULLI_URL}/api/v2`;
   try {
     const activity = await apiFetch(
       `${BASE}?apikey=${KEY}&cmd=get_activity`
@@ -318,7 +332,7 @@ async function tautulli(): Promise<ServiceResult> {
         : undefined,
     };
   } catch {
-    const up = await checkReachable(`http://${TRUENAS_IP}:30047`);
+    const up = await checkReachable(TAUTULLI_URL);
     return { name: "tautulli", up, lines: up ? ["—"] : [] };
   }
 }
@@ -339,7 +353,7 @@ const QBIT_DL_STATES   = new Set(["downloading","forcedDL","stalledDL","metaDL",
 const QBIT_SEED_STATES = new Set(["uploading","forcedUP","stalledUP","queuedUP","checkingUP"]);
 
 async function qbittorrent(): Promise<ServiceResult> {
-  const BASE = `http://${TRUENAS_IP}:30024`;
+  const BASE = QBIT_URL;
   try {
     const loginRes = await fetch(`${BASE}/api/v2/auth/login`, {
       method: "POST",
@@ -406,9 +420,9 @@ async function overseerr(): Promise<ServiceResult> {
   const KEY = process.env.OVERSEERR_API_KEY ?? "";
   try {
     const [pendingData, approvedData, availableData] = await Promise.all([
-      apiFetch(`http://${TRUENAS_IP}:30002/api/v1/request?take=1&skip=0&filter=pending`, { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
-      apiFetch(`http://${TRUENAS_IP}:30002/api/v1/request?take=1&skip=0&filter=approved`, { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
-      apiFetch(`http://${TRUENAS_IP}:30002/api/v1/request?take=1&skip=0&filter=available`, { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
+      apiFetch(`${OVERSEERR_URL}/api/v1/request?take=1&skip=0&filter=pending`,   { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
+      apiFetch(`${OVERSEERR_URL}/api/v1/request?take=1&skip=0&filter=approved`,  { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
+      apiFetch(`${OVERSEERR_URL}/api/v1/request?take=1&skip=0&filter=available`, { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
     ]);
     const pending   = pendingData.pageInfo?.results ?? 0;
     const approved  = approvedData.pageInfo?.results ?? 0;
@@ -417,13 +431,13 @@ async function overseerr(): Promise<ServiceResult> {
     if (available > 0) lines.push(`${available} available`);
     return { name: "overseerr", up: true, lines };
   } catch {
-    const up = await checkReachable(`http://${TRUENAS_IP}:30002`);
+    const up = await checkReachable(OVERSEERR_URL);
     return { name: "overseerr", up, lines: up ? ["—"] : [] };
   }
 }
 
 async function pihole(): Promise<ServiceResult> {
-  const BASE = `http://${TRUENAS_IP}:20720`;
+  const BASE = PIHOLE_URL;
 
   async function getSid(): Promise<string> {
     const now = Date.now();
@@ -506,7 +520,7 @@ async function pihole(): Promise<ServiceResult> {
 
 async function prowlarr(): Promise<ServiceResult> {
   const KEY  = process.env.PROWLARR_API_KEY ?? "";
-  const BASE = `http://${TRUENAS_IP}:30050`;
+  const BASE = PROWLARR_URL;
   try {
     const [stats, healthData] = await Promise.all([
       apiFetch(`${BASE}/api/v1/indexerstats?apikey=${KEY}`) as Promise<{
@@ -529,7 +543,7 @@ async function prowlarr(): Promise<ServiceResult> {
 }
 
 async function uptimeKuma(): Promise<ServiceResult> {
-  const BASE = `http://${TRUENAS_IP}:31050`;
+  const BASE = UPTIME_KUMA_URL;
 
   function parseHeartbeats(data: unknown): ServiceResult | null {
     const obj = data as { monitors?: { status?: number }[]; heartbeatList?: Record<string, { status?: number }[]> };
@@ -581,7 +595,7 @@ async function uptimeKuma(): Promise<ServiceResult> {
 }
 
 async function nginxProxy(): Promise<ServiceResult> {
-  const BASE = `http://${TRUENAS_IP}:30020`;
+  const BASE = NGINX_URL;
   try {
     const tokenRes = await fetch(`${BASE}/api/tokens`, {
       method: "POST",

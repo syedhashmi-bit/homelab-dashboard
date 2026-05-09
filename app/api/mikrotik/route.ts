@@ -17,6 +17,9 @@ let mikrotikCache: { data: unknown; ts: number } | null = null;
 // Just under the client poll interval (5s) for the same reasons as the other routes.
 const CACHE_TTL = 4_000;
 
+// Default to the original deployment's router IP, but allow override at deploy time.
+const MIKROTIK_URL = process.env.MIKROTIK_URL ?? "http://192.168.88.1";
+
 export async function GET() {
   if (mikrotikCache && Date.now() - mikrotikCache.ts < CACHE_TTL) {
     return NextResponse.json(mikrotikCache.data);
@@ -26,7 +29,7 @@ export async function GET() {
     const user = process.env.MIKROTIK_USERNAME ?? "";
     const pass = process.env.MIKROTIK_PASSWORD ?? "";
     const auth = Buffer.from(`${user}:${pass}`, "utf8").toString("base64");
-    const res = await fetch("http://192.168.88.1/rest/system/resource", {
+    const res = await fetch(`${MIKROTIK_URL}/rest/system/resource`, {
       method: "GET",
       headers: {
         Authorization: "Basic " + auth,
@@ -35,9 +38,7 @@ export async function GET() {
       cache: "no-store",
       signal: AbortSignal.timeout(5000),
     });
-    console.log("Mikrotik status:", res.status);
     const text = await res.text();
-    console.log("Mikrotik response:", text);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const d = JSON.parse(text) as Record<string, unknown>;
 

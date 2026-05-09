@@ -219,25 +219,66 @@ These don't use the shared `<Card>` (different layout) but follow the same visua
 
 ## Build & deploy
 
-The build runs on the **PC**, not in Docker. Workflow:
+GitHub Actions builds + publishes to GHCR on every push to `main`. TrueNAS pulls and runs.
 
 ```powershell
 # PC (PowerShell) — every code change
 $env:PATH = "C:\Program Files\nodejs;" + $env:PATH
-npm run build           # produces .next/ which is git-tracked
-git add .next app/<changed-files>
+npm run build           # local sanity check (CI does the real build)
+git add app/<changed-files>
 git commit -m "..."
 git push
 ```
 
 ```bash
-# TrueNAS (bash)
+# TrueNAS (bash) — pulls latest image, restarts container
 /root/update-dashboard.sh
 ```
 
-Why: `next build` SIGSEGVs non-deterministically inside Docker on the TrueNAS host. The Dockerfile is now runtime-only — it just installs prod deps and copies the prebuilt `.next/`. See `memory.md` → "Build moved off Docker" for the full diagnostic trail.
+Why CI not local Docker: `next build` SIGSEGV'd non-deterministically on the TrueNAS host but works reliably on Ubuntu runners. See `memory.md` → "Build moved off Docker" for the diagnostic trail.
 
-`.next/cache` and `.next/trace` stay gitignored — regenerable, would bloat commits. Everything else under `.next/` is tracked.
+`.next/` is gitignored — built fresh inside the image during CI. Image lives at `ghcr.io/syedhashmi-bit/homelab-dashboard:latest` (plus `:sha-<short>` and `:v<x.y.z>` tags).
+
+## Runtime client config pattern
+
+When a config value needs to be customizable per-deployment AND read by client components, expose it via the `/api/config` route — never bake into the bundle via `NEXT_PUBLIC_*`.
+
+- Server-only env vars are read by the route on each request.
+- Client fetches once on mount, swaps in over the static fallback.
+- No rebuild needed when an env var changes — just restart the container.
+
+```ts
+// In a route file (server-side):
+const SOMETHING = process.env.SOMETHING ?? "sensible-default";
+
+// In /api/config response shape (server-side):
+return NextResponse.json({ ..., something: SOMETHING });
+
+// In page.tsx (client):
+const cfg = useState<ClientConfig | null>(null);
+useEffect(() => { fetch("/api/config").then(r => r.json()).then(setCfg); }, []);
+const valueToRender = cfg?.something ?? FALLBACK;
+```
+
+`/api/config` must NEVER include API keys / passwords / bearers. Those stay in the per-service routes server-side.
+
+## Mountable JSON config pattern
+
+For larger user-customizable data (like the bookmarks list), don't try to fit it into env vars. Read a JSON file from disk at runtime instead:
+
+```ts
+const filePath = process.env.SOMETHING_PATH ?? path.join(process.cwd(), "something.json");
+try {
+  const raw = await fs.readFile(filePath, "utf8");
+  return JSON.parse(raw);
+} catch {
+  return DEFAULT;  // file missing or malformed → safe default
+}
+```
+
+User mounts their own file via `-v /host/path:/app/something.json:ro`. Default lives at the same path inside the image so things still work without a mount.
+
+Cache the read result for ~60s so we're not hitting disk per-request.
 
 ## Env vars
 

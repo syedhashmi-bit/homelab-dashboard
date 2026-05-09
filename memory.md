@@ -17,25 +17,41 @@ Past decisions and bug fixes. **`CLAUDE.md` is authoritative** — when this fil
 - `app/api/weather/route.ts` — Open-Meteo (Launceston, TAS).
 - `app/api/mikrotik/route.ts` — server-side proxy with Basic auth. The `MikrotikTab` client component now fetches `/api/mikrotik`, NOT the router directly.
 
-### Build moved off Docker (big workflow change)
+### Build moved off Docker (initial workaround)
 
-**Decision:** Build the production `.next/` on the PC. Ship it via git. Dockerfile is runtime-only.
-
-**Why:** `next build` SIGSEGVs non-deterministically inside the Docker build on this TrueNAS host. Confirmed it's NOT:
+`next build` SIGSEGVs non-deterministically inside the Docker build on the TrueNAS host. Ruled out:
 - Alpine vs Debian (tried both)
 - Memory exhaustion (tried `--max-old-space-size=4096`, OOMKilled=false)
 - `webpackMemoryOptimizations` (tried, still crashed)
 - Standalone-output trace (tried removing, still crashed at "Generating static pages 9/9" then SIGSEGV)
-- `set +e` + artifact-check workaround (tried — artifacts ended up incomplete because the crash sometimes happens earlier)
+- `set +e` + artifact-check workaround (artifacts incomplete because the crash sometimes happens earlier)
 
-The crash point varies between runs (page-data-collection, post-static-page, post-trace), strongly suggesting CPU/cgroup interaction with Next 15's SWC binary that can't be fixed from inside the repo.
+Crash point varies between runs (page-data-collection, post-static-page, post-trace), strongly suggesting CPU/cgroup interaction with Next 15's SWC binary that can't be fixed from inside the repo.
 
-**Workflow:**
-1. PC: `npm run build` → produces `.next/`
-2. PC: `git add .next app/<changes> && git commit && git push`
-3. TrueNAS: `/root/update-dashboard.sh` does `git fetch && git reset --hard origin/main`, `docker build`, `docker run` with all `-e` env vars
+**First fix (interim):** build `.next/` on the PC, ship via git, runtime-only Dockerfile on TrueNAS. Worked but coupled the deploy to local PC builds.
 
-`.next/cache` and `.next/trace` stay gitignored — they're regenerable and bloat commits.
+### Build → CI on GitHub Actions (current)
+
+Once we externalized config and started publishing a public image, the natural fix to the SIGSEGV was to move the build out of TrueNAS Docker entirely. CI (`.github/workflows/build.yml`) runs on Ubuntu x86_64 — different hardware than the user's TrueNAS — and `next build` works reliably there.
+
+- Dockerfile is back to a normal multi-stage build (`deps → builder → runner`).
+- Image is pushed to `ghcr.io/syedhashmi-bit/homelab-dashboard:latest` on every push to `main`. Also tagged with `:sha-<short>` and `:v<x.y.z>` for tagged releases.
+- TrueNAS `update-dashboard.sh` is now `docker pull` + `docker stop/rm/run`. No git pull, no docker build.
+- `.next/` removed from git — it's built fresh inside the image during CI.
+
+### Externalized infrastructure config (shareable image)
+
+To make the dashboard installable on someone else's TrueNAS, all hardcoded infra values were moved to env vars (with defaults that match the original deployment for back-compat):
+
+- Per-service URLs (`RADARR_URL`, `SONARR_URL`, etc.) — default to `${TRUENAS_IP}:<port>`
+- `MIKROTIK_URL` — default `http://192.168.88.1`
+- `FS_PATH_PREFIX`, `POOL_PATH`, `NETWORK_DEVICE_EXCLUDE`
+- `WEATHER_LAT`, `WEATHER_LON`
+- `GRAFANA_BASE_URL` + `GRAFANA_DASHBOARD_UID` + `GRAFANA_DATASOURCE_UID` + `GRAFANA_PANEL_ID` + `GRAFANA_DASHBOARD_SLUG` (no defaults for the UIDs — embed renders "not configured" when missing)
+
+Bookmarks moved out of `app/page.tsx` into a JSON file (`bookmarks.json`) read at runtime by `/api/config`. Path overridable via `BOOKMARKS_PATH`. Default location is `cwd/bookmarks.json` ⇒ `/app/bookmarks.json` inside the image.
+
+Client-side runtime config is exposed through a new `/api/config` route. The client fetches it once on mount and uses the response for `BOOKMARKS`, `SVC_URLS`, Grafana embed URL, and the MikroTik href. Nothing in `/api/config` is a secret.
 
 ### Secrets migration (Apr/May 2026)
 

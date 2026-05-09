@@ -27,10 +27,15 @@ const WEATHER_CODES: Record<number, string> = {
   99: "heavy thunderstorm",
 };
 
+// Coordinates default to Launceston, TAS — the original deployment's location.
+// Override via WEATHER_LAT / WEATHER_LON env vars.
+const LAT = process.env.WEATHER_LAT ?? "-41.4419";
+const LON = process.env.WEATHER_LON ?? "147.1450";
+
 export async function GET() {
   try {
     const res = await fetch(
-      "https://api.open-meteo.com/v1/forecast?latitude=-41.4419&longitude=147.1450&current=temperature_2m,weather_code",
+      `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,weather_code`,
       { next: { revalidate: 900 }, signal: AbortSignal.timeout(5000) },
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

@@ -76,11 +76,11 @@ Open-Meteo coords: `lat=-41.4419, lon=147.1450`.
 
 ## Env vars consumed by the code
 
-All credentials are now read server-side via `process.env.*`. None are hardcoded. Full list:
+All credentials are server-side `process.env.*`. None hardcoded. As of the externalization PR, all infrastructure values (per-service URLs, paths, weather coords, Grafana UIDs) are also env-driven so the same Docker image works for any installation.
 
+### Credentials
 | Env var | Used by |
 |---------|---------|
-| `TRUENAS_IP` (default `192.168.88.196`) | `metrics`, `services`, `speedtest` routes |
 | `RADARR_API_KEY` | `services/route.ts` → `radarr()` |
 | `SONARR_API_KEY` | `services/route.ts` → `sonarr()` |
 | `BAZARR_API_KEY` | `services/route.ts` → `bazarr()` |
@@ -94,7 +94,47 @@ All credentials are now read server-side via `process.env.*`. None are hardcoded
 | `MIKROTIK_USERNAME` / `MIKROTIK_PASSWORD` | `mikrotik/route.ts` |
 | `SPEEDTEST_API_KEY` | `speedtest/route.ts` |
 
-See `.env.local.example` for the full template with placeholder values.
+### URLs (default to `${TRUENAS_IP}:<standard-port>` when unset)
+| Env var | Default | Used by |
+|---------|---------|---------|
+| `TRUENAS_IP` | `192.168.88.196` | base for all per-service URL fallbacks |
+| `PROMETHEUS_URL` | `${TRUENAS_IP}:30104` | metrics route |
+| `RADARR_URL` | `${TRUENAS_IP}:30025` | services + activity routes + client SVC_URLS |
+| `SONARR_URL` | `${TRUENAS_IP}:33027` | services + activity + client |
+| `BAZARR_URL` | `${TRUENAS_IP}:30046` | services + client |
+| `TAUTULLI_URL` | `${TRUENAS_IP}:30047` | services + activity + client |
+| `QBIT_URL` | `${TRUENAS_IP}:30024` | services + client |
+| `OVERSEERR_URL` | `${TRUENAS_IP}:30002` | services + client |
+| `PIHOLE_URL` | `${TRUENAS_IP}:20720` | services + client |
+| `PROWLARR_URL` | `${TRUENAS_IP}:30050` | services + client |
+| `NGINX_URL` | `${TRUENAS_IP}:30020` | services + client |
+| `UPTIME_KUMA_URL` | `${TRUENAS_IP}:31050` | services + client |
+| `MIKROTIK_URL` | `http://192.168.88.1` | mikrotik route + client (header pill / link) |
+
+### Infrastructure / filters
+| Env var | Default | Used by |
+|---------|---------|---------|
+| `FS_PATH_PREFIX` | `/mnt/Pool/Media/` | metrics route filesystem filter |
+| `POOL_PATH` | `/mnt/Pool` | metrics route pool-total lookup |
+| `NETWORK_DEVICE_EXCLUDE` | `lo\|veth.*\|docker.*\|br.*` | metrics route net-throughput PromQL |
+| `WEATHER_LAT` | `-41.4419` | weather route + `/api/config` |
+| `WEATHER_LON` | `147.1450` | weather route + `/api/config` |
+
+### Grafana embed (no defaults — when missing, the card renders a setup hint)
+| Env var | Used by |
+|---------|---------|
+| `GRAFANA_BASE_URL` | `/api/config` (default `${TRUENAS_IP}:30037`) |
+| `GRAFANA_DASHBOARD_UID` | `/api/config` — required for embed |
+| `GRAFANA_DATASOURCE_UID` | `/api/config` — required for embed |
+| `GRAFANA_PANEL_ID` | `/api/config` (default `panel-77`) |
+| `GRAFANA_DASHBOARD_SLUG` | `/api/config` (default `node-exporter-full`) |
+
+### Bookmarks
+| Env var | Default |
+|---------|---------|
+| `BOOKMARKS_PATH` | `<cwd>/bookmarks.json` (i.e. `/app/bookmarks.json` in the Docker image) |
+
+See `.env.local.example` for the full template with placeholder values, and `bookmarks.example.json` for the bookmark file schema.
 
 ## CORS rules
 
