@@ -84,6 +84,9 @@ interface ServiceWeekly    { plays?: number; topShow?: string; topUser?: string 
 interface ServiceResult {
   name: string;
   up: boolean;
+  configured?: boolean;          // false ⇒ required env var(s) missing — card hidden, listed in Connections panel
+  envVar?:     string[];         // names of missing env vars
+  url?:        string;           // resolved upstream URL (for the Connections panel)
   lines: string[];
   pct?:        number;
   downCount?:  number;
@@ -1117,8 +1120,11 @@ function GoogleSearch({ inputRef }: { inputRef: React.RefObject<HTMLInputElement
 
 const CARD_KEYS = ["cpu", "memory", "filesystems", "network", "gpu", "speedtest", "system", "grafana", "services", "activity"] as const;
 
-function SettingsPanel({ settings, onUpdate, onClose }: {
-  settings: Settings; onUpdate: (s: Settings) => void; onClose: () => void;
+function SettingsPanel({ settings, onUpdate, onClose, services }: {
+  settings: Settings;
+  onUpdate: (s: Settings) => void;
+  onClose: () => void;
+  services?: ServiceResult[] | null;
 }) {
   return (
     <>
@@ -1200,6 +1206,57 @@ function SettingsPanel({ settings, onUpdate, onClose }: {
             );
           })}
         </div>
+
+        {/* Connections — per-service status. Helpful for first-run users seeing
+            which env vars they still need to set, and for debugging when a
+            configured service shows "—". */}
+        {services && services.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <span className="text-[10px] uppercase tracking-widest" style={{ color: "#2e2e2e" }}>Connections</span>
+            <div className="flex flex-col gap-1">
+              {services.map(s => {
+                const configured = s.configured !== false;
+                const ok         = configured && s.up;
+                const dotColor   = !configured ? "#444" : ok ? "#10b981" : "#ef4444";
+                const dotShadow  = !configured ? "none" : ok ? "0 0 4px #10b98166" : "0 0 4px #ef444466";
+                const statusText = !configured ? "not configured" : ok ? "connected" : "unreachable";
+                const statusColor = !configured ? "#555"     : ok ? "#10b981"      : "#ef4444";
+                return (
+                  <div key={s.name} className="flex items-center gap-2">
+                    <span className="rounded-full shrink-0" style={{ width: 6, height: 6, background: dotColor, boxShadow: dotShadow }} />
+                    <span className="text-[10px] flex-1" style={{ color: configured ? "#888" : "#444" }}>
+                      {SVC_LABELS[s.name] ?? s.name}
+                    </span>
+                    <span className="text-[9px] tabular-nums font-mono" style={{ color: statusColor }}>
+                      {statusText}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {(() => {
+              const missing = services.filter(s => s.configured === false);
+              if (missing.length === 0) return null;
+              const envVars = Array.from(new Set(missing.flatMap(s => s.envVar ?? [])));
+              return (
+                <div style={{ marginTop: 6, padding: "8px 10px", background: "#0e1318", borderRadius: 6, border: "1px solid #1a1f26" }}>
+                  <div className="text-[9px] uppercase tracking-widest" style={{ color: "#3a4a5a", marginBottom: 4 }}>
+                    Missing env vars
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    {envVars.map(v => (
+                      <code key={v} className="text-[10px] font-mono" style={{ color: "#06b6d4" }}>{v}</code>
+                    ))}
+                  </div>
+                  <div className="text-[9px]" style={{ color: "#3a4a5a", marginTop: 6, lineHeight: 1.5 }}>
+                    Set these via <code style={{ color: "#5a6a7a" }}>docker run -e</code> or in your{" "}
+                    <code style={{ color: "#5a6a7a" }}>docker-compose.yml</code>.
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
         <div style={{ height: 1, background: "#161616", marginTop: "auto" }} />
         <span className="text-[9px] text-center" style={{ color: "#1e1e1e" }}>resets on page reload</span>
@@ -1892,6 +1949,35 @@ export default function Dashboard() {
             <StatusBanner result={health} visible={mounted} />
           )}
 
+          {/* ── first-run setup banner — only when very few services are configured ── */}
+          {services && (() => {
+            const configuredCount = services.filter(s => s.configured !== false).length;
+            const totalCount      = services.length;
+            if (configuredCount >= 3 || configuredCount === totalCount) return null;
+            const missingCount = totalCount - configuredCount;
+            return (
+              <div className="flex items-center gap-3 flex-wrap" style={{
+                background: "rgba(6,182,212,0.05)",
+                border: "1px solid rgba(6,182,212,0.2)",
+                borderRadius: 10,
+                padding: "10px 14px",
+              }}>
+                <span style={{ color: "#06b6d4", fontSize: 14 }}>👋</span>
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>
+                  Welcome — {configuredCount === 0 ? "no services configured yet" : `only ${configuredCount} of ${totalCount} services configured`}.
+                </span>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>
+                  Open the Settings panel (⚙) → Connections to see what {missingCount} {missingCount === 1 ? "service is" : "services are"} missing, or check{" "}
+                  <a href="https://github.com/syedhashmi-bit/homelab-dashboard/blob/main/INSTALL.md" target="_blank" rel="noopener noreferrer"
+                    style={{ color: "#06b6d4", textDecoration: "underline" }}>
+                    INSTALL.md
+                  </a>{" "}
+                  for the full setup guide.
+                </span>
+              </div>
+            );
+          })()}
+
           {/* ── grid ── */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
 
@@ -2454,11 +2540,17 @@ export default function Dashboard() {
               <div className="flex items-center gap-3 flex-wrap">
                 <span style={{ color: "#8b5cf6", opacity: 0.8 }}><IconServices /></span>
                 <span className="text-[10px] uppercase" style={{ color: "rgba(255,255,255,0.45)", letterSpacing: "0.15em" }}>services</span>
-                {services && (
-                  <span style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 6, padding: "2px 8px", fontSize: 10, color: "#10b981", fontWeight: 600 }}>
-                    {services.filter(s => s.up).length} / {services.length} online
-                  </span>
-                )}
+                {services && (() => {
+                  // Only count services the user has actually configured. Unconfigured ones
+                  // are listed in Settings → Connections, not in the visible card grid.
+                  const configured = services.filter(s => s.configured !== false);
+                  if (configured.length === 0) return null;
+                  return (
+                    <span style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 6, padding: "2px 8px", fontSize: 10, color: "#10b981", fontWeight: 600 }}>
+                      {configured.filter(s => s.up).length} / {configured.length} online
+                    </span>
+                  );
+                })()}
                 {servicesUpdatedAt != null && (() => {
                   const sec = Math.round((Date.now() - servicesUpdatedAt) / 1000);
                   const rel = sec < 60 ? `${sec}s ago` : `${Math.round(sec / 60)}m ago`;
@@ -2472,7 +2564,11 @@ export default function Dashboard() {
                   {SVC_CATEGORIES.map(cat => {
                     const catCards = cat.services
                       .map(svcName => services.find(s => s.name === svcName))
-                      .filter((s): s is NonNullable<typeof s> => Boolean(s));
+                      .filter((s): s is NonNullable<typeof s> => Boolean(s))
+                      // Hide cards for services whose required env var(s) aren't set.
+                      // Those still show up in the Connections section of Settings,
+                      // so the user can find them and configure them.
+                      .filter(s => s.configured !== false);
                     if (catCards.length === 0) return null;
                     const upCount = catCards.filter(s => s.up).length;
                     const allUp = upCount === catCards.length;
@@ -2709,7 +2805,7 @@ export default function Dashboard() {
       </main>
 
       {showSettings && (
-        <SettingsPanel settings={settings} onUpdate={setSettings} onClose={() => setShowSettings(false)} />
+        <SettingsPanel settings={settings} onUpdate={setSettings} onClose={() => setShowSettings(false)} services={services} />
       )}
     </>
   );

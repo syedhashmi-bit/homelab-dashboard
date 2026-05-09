@@ -12,6 +12,9 @@ interface WeeklyStats {
 interface ServiceResult {
   name: string;
   up: boolean;
+  configured: boolean;                 // false ⇒ required credential env var missing; client hides the card
+  envVar?: string[];                   // names of the env vars the user needs to set when configured=false
+  url?: string;                        // resolved URL the service was tried at (for debug / Connections panel)
   lines: string[];
   pct?: number;
   downCount?: number;
@@ -20,6 +23,11 @@ interface ServiceResult {
   streams?:    Stream[];
   health?:     HealthSummary;
   weekly?:     WeeklyStats;
+}
+
+// Helper: build a "needs configuration" placeholder result.
+function unconfigured(name: string, envVar: string[]): ServiceResult {
+  return { name, up: false, configured: false, envVar, lines: [] };
 }
 
 let servicesCache: { data: { services: ServiceResult[]; timestamp: number }; ts: number } | null = null;
@@ -125,6 +133,7 @@ function summarizeHealth(records: ArrHealthRecord[] | null): HealthSummary | und
 async function radarr(): Promise<ServiceResult> {
   const KEY = process.env.RADARR_API_KEY ?? "";
   const BASE = RADARR_URL;
+  if (!KEY) return unconfigured("radarr", ["RADARR_API_KEY"]);
   try {
     // Primary call (movies) is required. The rest are enrichment — failures don't sink the card.
     const moviesData = await apiFetch(`${BASE}/api/v3/movie?apiKey=${KEY}`) as RadarrMovie[];
@@ -154,14 +163,14 @@ async function radarr(): Promise<ServiceResult> {
     if (summaryBits.length > 0) lines.push(summaryBits.join(" · "));
     if ((queueData?.totalRecords ?? 0) > 0) lines.push(`${queueData!.totalRecords} in queue`);
     return {
-      name: "radarr", up: true, pct, lines,
+      name: "radarr", up: true, configured: true, url: BASE, pct, lines,
       queueItem:  queueItems[0] ?? null,
       queueItems: queueItems.length > 0 ? queueItems : undefined,
       health:     summarizeHealth(healthData),
     };
   } catch {
     const up = await checkReachable(BASE);
-    return { name: "radarr", up, lines: up ? ["—"] : [] };
+    return { name: "radarr", up, configured: true, url: BASE, lines: up ? ["—"] : [] };
   }
 }
 
@@ -172,6 +181,7 @@ interface SonarrSeries {
 async function sonarr(): Promise<ServiceResult> {
   const KEY = process.env.SONARR_API_KEY ?? "";
   const BASE = SONARR_URL;
+  if (!KEY) return unconfigured("sonarr", ["SONARR_API_KEY"]);
   try {
     // Series request must succeed; rest are enrichment.
     const seriesData = await apiFetch(
@@ -203,20 +213,21 @@ async function sonarr(): Promise<ServiceResult> {
     if (summaryBits.length > 0) lines.push(summaryBits.join(" · "));
     if ((queueData?.totalRecords ?? 0) > 0) lines.push(`${queueData!.totalRecords} in queue`);
     return {
-      name: "sonarr", up: true, lines,
+      name: "sonarr", up: true, configured: true, url: BASE, lines,
       queueItem:  queueItems[0] ?? null,
       queueItems: queueItems.length > 0 ? queueItems : undefined,
       health:     summarizeHealth(healthData),
     };
   } catch {
     const up = await checkReachable(BASE);
-    return { name: "sonarr", up, lines: up ? ["—"] : [] };
+    return { name: "sonarr", up, configured: true, url: BASE, lines: up ? ["—"] : [] };
   }
 }
 
 async function bazarr(): Promise<ServiceResult> {
   const KEY = process.env.BAZARR_API_KEY ?? "";
   const BASE_URL = BAZARR_URL;
+  if (!KEY) return unconfigured("bazarr", ["BAZARR_API_KEY"]);
   const HEADERS = { "X-API-KEY": KEY };
 
   try {
@@ -226,10 +237,10 @@ async function bazarr(): Promise<ServiceResult> {
     ]);
     const epMissing = epData.total ?? 0;
     const mvMissing = mvData.total ?? 0;
-    return { name: "bazarr", up: true, lines: [`${epMissing} missing ep subs · ${mvMissing} missing movie subs`] };
+    return { name: "bazarr", up: true, configured: true, url: BASE_URL, lines: [`${epMissing} missing ep subs · ${mvMissing} missing movie subs`] };
   } catch {
     const up = await checkReachable(BASE_URL);
-    return { name: "bazarr", up, lines: up ? ["—"] : [] };
+    return { name: "bazarr", up, configured: true, url: BASE_URL, lines: up ? ["—"] : [] };
   }
 }
 
@@ -267,6 +278,7 @@ interface TautulliHomeStat {
 async function tautulli(): Promise<ServiceResult> {
   const KEY = process.env.TAUTULLI_API_KEY ?? "";
   const BASE = `${TAUTULLI_URL}/api/v2`;
+  if (!KEY) return unconfigured("tautulli", ["TAUTULLI_API_KEY"]);
   try {
     const activity = await apiFetch(
       `${BASE}?apikey=${KEY}&cmd=get_activity`
@@ -291,7 +303,7 @@ async function tautulli(): Promise<ServiceResult> {
     // plenty to show).
     if (count > 0) {
       return {
-        name: "tautulli", up: true,
+        name: "tautulli", up: true, configured: true, url: TAUTULLI_URL,
         lines: [`${count} active stream${count !== 1 ? "s" : ""}`],
         streams,
       };
@@ -326,14 +338,14 @@ async function tautulli(): Promise<ServiceResult> {
     if (topUser) lines.push(`top user: ${topUser}`);
 
     return {
-      name: "tautulli", up: true, lines, streams,
+      name: "tautulli", up: true, configured: true, url: TAUTULLI_URL, lines, streams,
       weekly: (playsWk != null || topShow || topUser)
         ? { plays: typeof playsWk === "number" ? playsWk : undefined, topShow, topUser }
         : undefined,
     };
   } catch {
     const up = await checkReachable(TAUTULLI_URL);
-    return { name: "tautulli", up, lines: up ? ["—"] : [] };
+    return { name: "tautulli", up, configured: true, url: TAUTULLI_URL, lines: up ? ["—"] : [] };
   }
 }
 
@@ -354,6 +366,9 @@ const QBIT_SEED_STATES = new Set(["uploading","forcedUP","stalledUP","queuedUP",
 
 async function qbittorrent(): Promise<ServiceResult> {
   const BASE = QBIT_URL;
+  const USER = process.env.QBIT_USERNAME ?? "";
+  const PASS = process.env.QBIT_PASSWORD ?? "";
+  if (!USER || !PASS) return unconfigured("qbittorrent", ["QBIT_USERNAME", "QBIT_PASSWORD"]);
   try {
     const loginRes = await fetch(`${BASE}/api/v2/auth/login`, {
       method: "POST",
@@ -361,10 +376,7 @@ async function qbittorrent(): Promise<ServiceResult> {
         "Content-Type": "application/x-www-form-urlencoded",
         "Referer": BASE,
       },
-      body: new URLSearchParams({
-        username: process.env.QBIT_USERNAME ?? "",
-        password: process.env.QBIT_PASSWORD ?? "",
-      }).toString(),
+      body: new URLSearchParams({ username: USER, password: PASS }).toString(),
       signal: AbortSignal.timeout(5000),
       next: { revalidate: 0 },
     });
@@ -406,18 +418,19 @@ async function qbittorrent(): Promise<ServiceResult> {
     ];
 
     return {
-      name: "qbittorrent", up: true, lines,
+      name: "qbittorrent", up: true, configured: true, url: BASE, lines,
       queueItem:  queueItems[0] ?? null,
       queueItems: queueItems.length > 0 ? queueItems : undefined,
     };
   } catch {
     const up = await checkReachable(`${BASE}/api/v2/app/version`);
-    return { name: "qbittorrent", up, lines: up ? ["—"] : [] };
+    return { name: "qbittorrent", up, configured: true, url: BASE, lines: up ? ["—"] : [] };
   }
 }
 
 async function overseerr(): Promise<ServiceResult> {
   const KEY = process.env.OVERSEERR_API_KEY ?? "";
+  if (!KEY) return unconfigured("overseerr", ["OVERSEERR_API_KEY"]);
   try {
     const [pendingData, approvedData, availableData] = await Promise.all([
       apiFetch(`${OVERSEERR_URL}/api/v1/request?take=1&skip=0&filter=pending`,   { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
@@ -429,15 +442,16 @@ async function overseerr(): Promise<ServiceResult> {
     const available = availableData.pageInfo?.results ?? 0;
     const lines = [`${pending} pending · ${approved} approved`];
     if (available > 0) lines.push(`${available} available`);
-    return { name: "overseerr", up: true, lines };
+    return { name: "overseerr", up: true, configured: true, url: OVERSEERR_URL, lines };
   } catch {
     const up = await checkReachable(OVERSEERR_URL);
-    return { name: "overseerr", up, lines: up ? ["—"] : [] };
+    return { name: "overseerr", up, configured: true, url: OVERSEERR_URL, lines: up ? ["—"] : [] };
   }
 }
 
 async function pihole(): Promise<ServiceResult> {
   const BASE = PIHOLE_URL;
+  if (!process.env.PIHOLE_PASSWORD) return unconfigured("pihole", ["PIHOLE_PASSWORD"]);
 
   async function getSid(): Promise<string> {
     const now = Date.now();
@@ -510,17 +524,18 @@ async function pihole(): Promise<ServiceResult> {
     }
     lines.push(`${gravity.toLocaleString()} domains in gravity`);
 
-    return { name: "pihole", up: true, lines };
+    return { name: "pihole", up: true, configured: true, url: BASE, lines };
   } catch {
     piholeSession = null;
     const up = await checkReachable(BASE);
-    return { name: "pihole", up, lines: up ? ["—"] : [] };
+    return { name: "pihole", up, configured: true, url: BASE, lines: up ? ["—"] : [] };
   }
 }
 
 async function prowlarr(): Promise<ServiceResult> {
   const KEY  = process.env.PROWLARR_API_KEY ?? "";
   const BASE = PROWLARR_URL;
+  if (!KEY) return unconfigured("prowlarr", ["PROWLARR_API_KEY"]);
   try {
     const [stats, healthData] = await Promise.all([
       apiFetch(`${BASE}/api/v1/indexerstats?apikey=${KEY}`) as Promise<{
@@ -532,13 +547,13 @@ async function prowlarr(): Promise<ServiceResult> {
     const grabs    = indexers.reduce((s, i) => s + (i.numberOfGrabs   ?? 0), 0);
     const queries  = indexers.reduce((s, i) => s + (i.numberOfQueries ?? 0), 0);
     return {
-      name: "prowlarr", up: true,
+      name: "prowlarr", up: true, configured: true, url: BASE,
       lines: [`${indexers.length} indexers · ${grabs} grabs · ${queries} queries`],
       health: summarizeHealth(healthData),
     };
   } catch {
     const up = await checkReachable(BASE);
-    return { name: "prowlarr", up, lines: up ? ["—"] : [] };
+    return { name: "prowlarr", up, configured: true, url: BASE, lines: up ? ["—"] : [] };
   }
 }
 
@@ -557,7 +572,7 @@ async function uptimeKuma(): Promise<ServiceResult> {
     const upCount   = monitors.filter(m => m.status === 1).length;
     const downCount = monitors.filter(m => m.status === 0).length;
     const line      = downCount > 0 ? `${upCount} up · ${downCount} down` : `${upCount} sites up`;
-    return { name: "uptimekuma", up: true, lines: [line], downCount };
+    return { name: "uptimekuma", up: true, configured: true, url: BASE, lines: [line], downCount };
   }
 
   const AUTH = { Authorization: `Bearer ${process.env.UPTIME_KUMA_API_KEY ?? ""}` };
@@ -585,25 +600,25 @@ async function uptimeKuma(): Promise<ServiceResult> {
       const downCount = (text.match(/monitor_status\{[^}]*\}\s+0/g) ?? []).length;
       if (upCount + downCount > 0) {
         const line = downCount > 0 ? `${upCount} up · ${downCount} down` : `${upCount} sites up`;
-        return { name: "uptimekuma", up: true, lines: [line], downCount };
+        return { name: "uptimekuma", up: true, configured: true, url: BASE, lines: [line], downCount };
       }
     }
   } catch { /* fall through */ }
 
   const up = await checkReachable(BASE);
-  return { name: "uptimekuma", up, lines: up ? ["online"] : [] };
+  return { name: "uptimekuma", up, configured: true, url: BASE, lines: up ? ["online"] : [] };
 }
 
 async function nginxProxy(): Promise<ServiceResult> {
   const BASE = NGINX_URL;
+  const USER = process.env.NGINX_USERNAME ?? "";
+  const PASS = process.env.NGINX_PASSWORD ?? "";
+  if (!USER || !PASS) return unconfigured("nginx", ["NGINX_USERNAME", "NGINX_PASSWORD"]);
   try {
     const tokenRes = await fetch(`${BASE}/api/tokens`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        identity: process.env.NGINX_USERNAME ?? "",
-        secret:   process.env.NGINX_PASSWORD ?? "",
-      }),
+      body: JSON.stringify({ identity: USER, secret: PASS }),
       signal: AbortSignal.timeout(5000),
       next: { revalidate: 0 },
     });
@@ -618,10 +633,10 @@ async function nginxProxy(): Promise<ServiceResult> {
       .slice(0, 3);
     const lines: string[] = [`${enabled} enabled · ${disabled} disabled`];
     if (domains.length > 0) lines.push(...domains);
-    return { name: "nginx", up: true, lines };
+    return { name: "nginx", up: true, configured: true, url: BASE, lines };
   } catch {
     const up = await checkReachable(BASE);
-    return { name: "nginx", up, lines: up ? ["—"] : [] };
+    return { name: "nginx", up, configured: true, url: BASE, lines: up ? ["—"] : [] };
   }
 }
 
@@ -636,7 +651,7 @@ export async function GET() {
     qbittorrent(), overseerr(), pihole(), prowlarr(), nginxProxy(), uptimeKuma(),
   ]);
   const results: ServiceResult[] = settled.map((r, i) =>
-    r.status === "fulfilled" ? r.value : { name: names[i], up: false, lines: [] }
+    r.status === "fulfilled" ? r.value : { name: names[i], up: false, configured: true, lines: [] }
   );
 
   const data = { services: results, timestamp: Date.now() };

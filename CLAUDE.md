@@ -56,7 +56,10 @@ Five routes — all proxy from the browser to internal services to avoid CORS an
 
 `services/route.ts` does `Promise.allSettled` over 10 service functions (radarr, sonarr, bazarr, tautulli, qbittorrent, overseerr, pihole, prowlarr, nginx, uptimekuma). Each function has a single primary fetch that must succeed, plus optional enrichment fetches (`apiFetchOpt` returns `null` instead of throwing) that fail individually without sinking the card. On any primary fetch failure the card falls back to `["—"]` via `checkReachable()`. 10s in-memory cache.
 
-`ServiceResult` shape: `name, up, lines[], pct?, downCount?, queueItem?, queueItems?, streams?, health?, weekly?`. The new richer fields:
+`ServiceResult` shape: `name, up, configured, envVar?, url?, lines[], pct?, downCount?, queueItem?, queueItems?, streams?, health?, weekly?`.
+- `configured: false` — required env var(s) missing. The route returns immediately without hitting the upstream. Use the `unconfigured(name, ["VAR_NAME"])` helper at the top of each service function for this. The frontend filters cards with `configured === false` out of the visible grid; they appear in Settings → Connections instead so users see what's missing.
+- `envVar?: string[]` — names of the missing env vars (only set when `configured: false`). Surfaced in the Connections panel's "Missing env vars" block.
+- `url?: string` — resolved upstream URL the service was tried at. Used by the Connections panel for debug.
 - `queueItems?: QueueItem[]` — top-3 active downloads (Radarr/Sonarr/qBit). Each has `title`, `pct`, optional `etaSec`. The legacy single `queueItem` is still emitted for back-compat.
 - `health?: { warning, error }` — populated for Radarr/Sonarr/Prowlarr from their `/health` endpoints. Card renders an orange/red pill in the header when set.
 - `weekly?: { plays?, topShow?, topUser? }` — populated for Tautulli when no streams active, from `cmd=get_home_stats&time_range=7` + `cmd=get_history&after=<7d>`.
