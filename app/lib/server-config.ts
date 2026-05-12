@@ -64,6 +64,10 @@ export interface ResolvedConfig {
   poolPath:      string;
   netExclude:    string;
   weather:       { lat: string; lon: string };
+  preferences: {
+    searchEngine: string;   // "google" | "bing" | "duckduckgo" | "kagi"
+    timezone:     string;   // IANA timezone (e.g. "Australia/Hobart"), "" = browser local
+  };
 }
 
 export type ServiceName = keyof ResolvedConfig["services"];
@@ -73,6 +77,7 @@ export interface PartialFileConfig {
   mikrotik?: { url?: string; username?: string; password?: string };
   services?: Partial<Record<ServiceName, { url?: string; apiKey?: string; username?: string; password?: string }>>;
   grafana?:  { baseUrl?: string; dashboardUid?: string; datasourceUid?: string; panelId?: string; dashboardSlug?: string };
+  preferences?: { searchEngine?: string; timezone?: string };
 }
 
 // ── service manifest ──────────────────────────────────────────────────────
@@ -217,6 +222,10 @@ export async function loadConfig(): Promise<ResolvedConfig> {
     weather: {
       lat: pick(undefined, process.env.WEATHER_LAT, "-41.4419"),
       lon: pick(undefined, process.env.WEATHER_LON, "147.1450"),
+    },
+    preferences: {
+      searchEngine: pick(file?.preferences?.searchEngine, process.env.SEARCH_ENGINE, "google"),
+      timezone:     pick(file?.preferences?.timezone,     process.env.TIMEZONE,       ""),
     },
   };
 

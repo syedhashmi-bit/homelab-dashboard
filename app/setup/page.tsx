@@ -56,6 +56,7 @@ interface WizardState {
   rows:      Record<string, ServiceRow>;
   mikrotik:  { enabled: boolean; url: string; username: string; password: string; testStatus: TestStatus };
   grafana:   { enabled: boolean; baseUrl: string; dashboardUid: string; datasourceUid: string; panelId: string };
+  preferences: { searchEngine: string; timezone: string };
 }
 
 const LS_KEY = "comexe:setup-wizard";
@@ -69,6 +70,7 @@ function defaultState(): WizardState {
     }])),
     mikrotik: { enabled: false, url: "http://192.168.88.1", username: "monitor-only", password: "", testStatus: { state: "idle" } },
     grafana:  { enabled: false, baseUrl: "", dashboardUid: "", datasourceUid: "", panelId: "panel-77" },
+    preferences: { searchEngine: "google", timezone: "" },
   };
 }
 
@@ -83,8 +85,9 @@ function loadState(): WizardState {
     return {
       ...def, ...parsed,
       rows: { ...def.rows, ...parsed.rows },
-      mikrotik: { ...def.mikrotik, ...parsed.mikrotik, testStatus: { state: "idle" } },
-      grafana:  { ...def.grafana,  ...parsed.grafana },
+      mikrotik:    { ...def.mikrotik,    ...parsed.mikrotik, testStatus: { state: "idle" } },
+      grafana:     { ...def.grafana,     ...parsed.grafana },
+      preferences: { ...def.preferences, ...parsed.preferences },
     };
   } catch {
     return defaultState();
@@ -286,6 +289,7 @@ export default function SetupWizard() {
       mikrotik?: { url: string; username: string; password: string };
       services:  Record<string, { url?: string; apiKey?: string; username?: string; password?: string }>;
       grafana?:  { baseUrl?: string; dashboardUid?: string; datasourceUid?: string; panelId?: string };
+      preferences?: { searchEngine?: string; timezone?: string };
     } = {
       truenasIp: state.truenasIp,
       services:  {},
@@ -325,6 +329,12 @@ export default function SetupWizard() {
         panelId:       state.grafana.panelId       || undefined,
       };
     }
+
+    // Always include preferences
+    body.preferences = {
+      searchEngine: state.preferences.searchEngine || undefined,
+      timezone:     state.preferences.timezone     || undefined,
+    };
 
     try {
       const res = await fetch("/api/config", {
@@ -496,8 +506,58 @@ export default function SetupWizard() {
         </div>
       </div>
 
-      {/* ── 5. Save & apply ── */}
-      <Section title="5 · Save & apply" subtitle="Writes your config to the container's data volume. The dashboard picks up the change within ~3 seconds — no redeploy needed.">
+      {/* ── 5. Preferences ── */}
+      <Section title="5 · Preferences" subtitle="Search engine, timezone, and display defaults. These are optional — the dashboard works with sensible defaults.">
+        <div style={{
+          display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
+          background: "rgba(255,255,255,0.02)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: 10, padding: 16,
+        }}>
+          <div>
+            <label style={{ display: "block", fontSize: 10, color: "rgba(255,255,255,0.35)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Search Engine</label>
+            <select
+              value={state.preferences.searchEngine}
+              onChange={e => { const s = { ...state, preferences: { ...state.preferences, searchEngine: e.target.value } }; setState(s); saveState(s); }}
+              style={{ width: "100%", background: "#111", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, padding: "8px 10px", fontSize: 12, color: "#fff", outline: "none" }}
+            >
+              <option value="google">Google</option>
+              <option value="bing">Bing</option>
+              <option value="duckduckgo">DuckDuckGo</option>
+              <option value="kagi">Kagi</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: 10, color: "rgba(255,255,255,0.35)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Timezone</label>
+            <select
+              value={state.preferences.timezone}
+              onChange={e => { const s = { ...state, preferences: { ...state.preferences, timezone: e.target.value } }; setState(s); saveState(s); }}
+              style={{ width: "100%", background: "#111", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, padding: "8px 10px", fontSize: 12, color: "#fff", outline: "none" }}
+            >
+              <option value="">Browser local (auto)</option>
+              {[
+                "Pacific/Auckland", "Pacific/Fiji",
+                "Australia/Sydney", "Australia/Adelaide", "Australia/Perth", "Australia/Hobart", "Australia/Brisbane",
+                "Asia/Tokyo", "Asia/Seoul", "Asia/Shanghai", "Asia/Hong_Kong", "Asia/Singapore",
+                "Asia/Kolkata", "Asia/Dubai", "Asia/Karachi",
+                "Europe/Moscow", "Europe/Istanbul", "Europe/Athens", "Europe/Helsinki",
+                "Europe/Berlin", "Europe/Paris", "Europe/Amsterdam", "Europe/Zurich",
+                "Europe/London",
+                "Atlantic/Reykjavik",
+                "America/Sao_Paulo", "America/Argentina/Buenos_Aires",
+                "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+                "America/Anchorage", "Pacific/Honolulu",
+                "America/Toronto", "America/Vancouver",
+              ].map(tz => (
+                <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </Section>
+
+      {/* ── 6. Save & apply ── */}
+      <Section title="6 · Save & apply" subtitle="Writes your config to the container's data volume. The dashboard picks up the change within ~3 seconds — no redeploy needed.">
         <div style={{
           background: "rgba(255,255,255,0.02)",
           border: "1px solid rgba(255,255,255,0.08)",

@@ -28,6 +28,10 @@ export interface ClientConfig {
   serviceUrls:  Record<string, string>;
   bookmarks:    BookmarkColumn[];
   fsPathPrefix: string;
+  preferences: {
+    searchEngine: string;
+    timezone:     string;
+  };
   // True when the data/ volume is writable, i.e. POST will succeed. The wizard
   // shows different copy if false.
   writable: boolean;
@@ -119,6 +123,7 @@ export async function GET() {
     serviceUrls,
     bookmarks:    await loadBookmarks(),
     fsPathPrefix: config.fsPathPrefix,
+    preferences:  config.preferences,
     writable,
   };
 
@@ -140,6 +145,7 @@ interface PostBody {
   mikrotik?:  { url?: string; username?: string; password?: string };
   services?:  PartialFileConfig["services"];
   grafana?:   PartialFileConfig["grafana"];
+  preferences?: { searchEngine?: string; timezone?: string };
 }
 
 function isStringOrUndef(v: unknown): v is string | undefined {
@@ -175,6 +181,12 @@ function validateBody(b: unknown): { ok: true; cfg: PartialFileConfig } | { ok: 
     for (const k of ["baseUrl", "dashboardUid", "datasourceUid", "panelId", "dashboardSlug"]) {
       if (!isStringOrUndef((obj.grafana as Record<string, unknown>)[k])) return { ok: false, message: `grafana.${k} must be a string` };
     }
+  }
+
+  if (obj.preferences !== undefined) {
+    if (typeof obj.preferences !== "object" || obj.preferences === null) return { ok: false, message: "preferences must be an object" };
+    if (!isStringOrUndef((obj.preferences as Record<string, unknown>).searchEngine)) return { ok: false, message: "preferences.searchEngine must be a string" };
+    if (!isStringOrUndef((obj.preferences as Record<string, unknown>).timezone))     return { ok: false, message: "preferences.timezone must be a string" };
   }
 
   return { ok: true, cfg: obj as PartialFileConfig };

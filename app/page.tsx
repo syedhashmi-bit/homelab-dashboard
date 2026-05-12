@@ -58,11 +58,15 @@ interface Metrics {
   timestamp: number;
 }
 
+type SearchEngine = "google" | "bing" | "duckduckgo" | "kagi";
+
 interface Settings {
   refreshInterval: number;
   tempUnit: TempUnit;
   dataUnit: DataUnit;
   visibleCards: Record<string, boolean>;
+  searchEngine: SearchEngine;
+  timezone: string; // IANA timezone, "" = browser local
 }
 
 interface SpeedtestResult {
@@ -113,6 +117,15 @@ interface BookmarkColumn {
   accentColor: string;
   items: { name: string; url: string; icon: string }[];
 }
+interface ForecastDay {
+  date:      string;
+  high:      number;
+  low:       number;
+  code:      number;
+  condition: string;
+  emoji:     string;
+}
+
 interface ClientConfig {
   truenasIp:    string;
   mikrotikUrl:  string;
@@ -127,6 +140,10 @@ interface ClientConfig {
   serviceUrls:  Record<string, string>;
   bookmarks:    BookmarkColumn[];
   fsPathPrefix: string;
+  preferences?: {
+    searchEngine: string;
+    timezone:     string;
+  };
 }
 
 // ── module constants ──────────────────────────────────────────────────────────
@@ -1057,15 +1074,53 @@ function StatRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-// ── google search ─────────────────────────────────────────────────────────────
+// ── search bar ────────────────────────────────────────────────────────────────
 
-function GoogleSearch({ inputRef }: { inputRef: React.RefObject<HTMLInputElement | null> }) {
+const SEARCH_ENGINES: Record<SearchEngine, { label: string; url: string; placeholder: string }> = {
+  google:      { label: "Google",      url: "https://www.google.com/search?q=",   placeholder: "Search Google…" },
+  bing:        { label: "Bing",        url: "https://www.bing.com/search?q=",     placeholder: "Search Bing…" },
+  duckduckgo:  { label: "DuckDuckGo",  url: "https://duckduckgo.com/?q=",         placeholder: "Search DuckDuckGo…" },
+  kagi:        { label: "Kagi",        url: "https://kagi.com/search?q=",         placeholder: "Search Kagi…" },
+};
+
+function SearchEngineIcon({ engine, size = 16 }: { engine: SearchEngine; size?: number }) {
+  if (engine === "google") return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+    </svg>
+  );
+  if (engine === "bing") return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+      <path d="M5 3v16.5l4.67 2.5 8.33-4.5v-5L11.33 9l-2.33.83V5.5L5 3zm4.67 11.17l4.33 2.33-4.33 2.33v-4.66z" fill="#00809D"/>
+    </svg>
+  );
+  if (engine === "duckduckgo") return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="11" fill="#DE5833"/>
+      <circle cx="12" cy="12" r="7" fill="#fff"/>
+      <circle cx="12" cy="12" r="3.5" fill="#DE5833"/>
+    </svg>
+  );
+  // kagi
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+      <rect x="2" y="2" width="20" height="20" rx="4" fill="#FFBE2E"/>
+      <path d="M8 7h8v2H8zm0 4h8v2H8zm0 4h5v2H8z" fill="#1a1a1a"/>
+    </svg>
+  );
+}
+
+function SearchBar({ inputRef, engine }: { inputRef: React.RefObject<HTMLInputElement | null>; engine: SearchEngine }) {
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
+  const cfg = SEARCH_ENGINES[engine] ?? SEARCH_ENGINES.google;
 
   function doSearch() {
     const q = query.trim();
-    if (q) window.open(`https://www.google.com/search?q=${encodeURIComponent(q)}`, "_blank");
+    if (q) window.open(`${cfg.url}${encodeURIComponent(q)}`, "_blank");
   }
 
   return (
@@ -1082,17 +1137,12 @@ function GoogleSearch({ inputRef }: { inputRef: React.RefObject<HTMLInputElement
           transition: "border-color 0.2s, box-shadow 0.2s, transform 0.2s",
         }}
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
-          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
-          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-        </svg>
+        <SearchEngineIcon engine={engine} />
         <input
           ref={inputRef}
           type="text"
           value={query}
-          placeholder="Search Google…"
+          placeholder={cfg.placeholder}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") doSearch(); if (e.key === "Escape") (e.target as HTMLInputElement).blur(); }}
           onFocus={() => setFocused(true)}
@@ -1189,6 +1239,57 @@ function SettingsPanel({ settings, onUpdate, onClose, services }: {
               >{u === "decimal" ? "GB" : "GiB"}</button>
             ))}
           </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <span className="text-[10px] uppercase tracking-widest" style={{ color: "#2e2e2e" }}>Search Engine</span>
+          <div className="flex gap-1.5 flex-wrap">
+            {(["google", "bing", "duckduckgo", "kagi"] as SearchEngine[]).map(e => (
+              <button key={e} onClick={() => onUpdate({ ...settings, searchEngine: e })}
+                className="flex-1 py-1.5 rounded text-[10px] font-medium transition-all duration-150 flex items-center justify-center gap-1"
+                style={{
+                  background: settings.searchEngine === e ? "#00e5ff14" : "#161616",
+                  border: `1px solid ${settings.searchEngine === e ? "#00e5ff33" : "#1e1e1e"}`,
+                  color: settings.searchEngine === e ? "#00e5ff" : "#444", cursor: "pointer",
+                  minWidth: 0, padding: "6px 4px",
+                }}
+              >
+                <SearchEngineIcon engine={e} size={10} />
+                <span style={{ fontSize: 9 }}>{e === "duckduckgo" ? "DDG" : e.charAt(0).toUpperCase() + e.slice(1)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <span className="text-[10px] uppercase tracking-widest" style={{ color: "#2e2e2e" }}>Timezone</span>
+          <select
+            value={settings.timezone}
+            onChange={e => onUpdate({ ...settings, timezone: e.target.value })}
+            style={{
+              background: "#161616", border: "1px solid #1e1e1e", borderRadius: 6,
+              padding: "6px 8px", fontSize: 10, color: settings.timezone ? "#00e5ff" : "#444",
+              cursor: "pointer", outline: "none", width: "100%",
+            }}
+          >
+            <option value="">Browser local</option>
+            {[
+              "Pacific/Auckland", "Pacific/Fiji",
+              "Australia/Sydney", "Australia/Adelaide", "Australia/Perth", "Australia/Hobart", "Australia/Brisbane",
+              "Asia/Tokyo", "Asia/Seoul", "Asia/Shanghai", "Asia/Hong_Kong", "Asia/Singapore",
+              "Asia/Kolkata", "Asia/Dubai", "Asia/Karachi",
+              "Europe/Moscow", "Europe/Istanbul", "Europe/Athens", "Europe/Helsinki",
+              "Europe/Berlin", "Europe/Paris", "Europe/Amsterdam", "Europe/Zurich",
+              "Europe/London",
+              "Atlantic/Reykjavik",
+              "America/Sao_Paulo", "America/Argentina/Buenos_Aires",
+              "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+              "America/Anchorage", "Pacific/Honolulu",
+              "America/Toronto", "America/Vancouver",
+            ].map(tz => (
+              <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
+            ))}
+          </select>
         </div>
 
         <div className="flex flex-col gap-2">
@@ -1614,7 +1715,8 @@ function ActivityFeed({ events, loading }: { events: ActivityEvent[]; loading: b
 
 // ── dashboard ─────────────────────────────────────────────────────────────────
 
-const DEFAULT_SETTINGS: Settings = { refreshInterval: 3, tempUnit: "C", dataUnit: "decimal", visibleCards: {} };
+const DEFAULT_SETTINGS: Settings = { refreshInterval: 3, tempUnit: "C", dataUnit: "decimal", visibleCards: {}, searchEngine: "google", timezone: "" };
+const SETTINGS_KEY = "comexe:settings";
 
 export default function Dashboard() {
   const [metrics,      setMetrics]      = useState<Metrics | null>(null);
@@ -1638,7 +1740,7 @@ export default function Dashboard() {
   const [txHistory,      setTxHistory]      = useState<number[]>([]);
 
 
-  const [weather,            setWeather]            = useState<{ temp: number | null; condition: string | null } | null>(null);
+  const [weather,            setWeather]            = useState<{ temp: number | null; condition: string | null; forecast?: ForecastDay[] } | null>(null);
   const [services,           setServices]           = useState<ServiceResult[] | null>(null);
   const [servicesLoading,    setServicesLoading]    = useState(true);
   const [servicesUpdatedAt,  setServicesUpdatedAt]  = useState<number | null>(null);
@@ -1653,6 +1755,20 @@ export default function Dashboard() {
   const [clockTime,        setClockTime]        = useState("");
 
   useEffect(() => { setMounted(true); }, []);
+
+  // Persist settings to localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SETTINGS_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setSettings(s => ({ ...s, ...parsed }));
+      }
+    } catch { /* corrupt or empty — use defaults */ }
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* quota exceeded — ignore */ }
+  }, [settings]);
 
   const fetchMetrics = useCallback(async () => {
     setRefreshing(true);
@@ -1730,28 +1846,38 @@ export default function Dashboard() {
       const res = await fetch("/api/weather");
       if (!res.ok) return;
       const data = await res.json();
-      if (!data.error) setWeather({ temp: data.temp, condition: data.condition });
+      if (!data.error) setWeather({ temp: data.temp, condition: data.condition, forecast: data.forecast ?? [] });
     } catch {
       // weather is non-critical; fail silently
     }
   }, []);
 
-  // Clock — updates every second
+  // Clock — updates every second, respects timezone setting
   useEffect(() => {
     function tick() {
       const now = new Date();
+      const tz = settings.timezone || undefined; // "" → undefined = browser local
+      const opts: Intl.DateTimeFormatOptions = tz ? { timeZone: tz } : {};
       const days   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
       const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-      const h = String(now.getHours()).padStart(2, "0");
-      const m = String(now.getMinutes()).padStart(2, "0");
-      const s = String(now.getSeconds()).padStart(2, "0");
-      setClockDate(`${days[now.getDay()]} · ${now.getDate()} ${months[now.getMonth()]}`);
-      setClockTime(`${h}:${m}:${s}`);
+      // When a custom timezone is set, get the shifted day/date/month via Intl
+      const parts  = new Intl.DateTimeFormat("en-US", { ...opts, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).formatToParts(now);
+      const get    = (t: string) => parts.find(p => p.type === t)?.value ?? "";
+      if (tz) {
+        setClockDate(`${get("weekday")} · ${get("day")} ${get("month")}`);
+        setClockTime(`${get("hour")}:${get("minute")}:${get("second")}`);
+      } else {
+        const h = String(now.getHours()).padStart(2, "0");
+        const m = String(now.getMinutes()).padStart(2, "0");
+        const s = String(now.getSeconds()).padStart(2, "0");
+        setClockDate(`${days[now.getDay()]} · ${now.getDate()} ${months[now.getMonth()]}`);
+        setClockTime(`${h}:${m}:${s}`);
+      }
     }
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [settings.timezone]);
 
   // Weather — fetch once on mount, refresh every 10 minutes
   useEffect(() => {
@@ -1787,7 +1913,23 @@ export default function Dashboard() {
   useEffect(() => {
     fetch("/api/config", { cache: "no-store" })
       .then(r => r.ok ? r.json() : null)
-      .then((cfg: ClientConfig | null) => { if (cfg) setClientConfig(cfg); })
+      .then((cfg: ClientConfig | null) => {
+        if (!cfg) return;
+        setClientConfig(cfg);
+        // Seed preferences from server config if user hasn't customized locally yet
+        if (cfg.preferences) {
+          setSettings(prev => {
+            const saved = localStorage.getItem(SETTINGS_KEY);
+            const hasSavedEngine = saved && JSON.parse(saved).searchEngine;
+            const hasSavedTz     = saved && JSON.parse(saved).timezone !== undefined;
+            return {
+              ...prev,
+              searchEngine: hasSavedEngine ? prev.searchEngine : (cfg.preferences!.searchEngine as SearchEngine) || prev.searchEngine,
+              timezone:     hasSavedTz     ? prev.timezone     : cfg.preferences!.timezone ?? prev.timezone,
+            };
+          });
+        }
+      })
       .catch(() => { /* keep clientConfig null; UI uses hardcoded fallbacks */ });
   }, []);
 
@@ -1896,9 +2038,53 @@ export default function Dashboard() {
               </span>
             )}
             {weather && (
-              <span className="shrink-0 hidden sm:inline" style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, padding: "3px 10px", fontSize: 11, color: "rgba(255,255,255,0.85)" }}>
-                {weather.temp != null ? `${weather.temp.toFixed(0)}°C` : ""}
-                {weather.condition ? ` · ${weather.condition}` : ""}
+              <span className="shrink-0 hidden sm:inline" style={{ position: "relative" }}>
+                <span
+                  className="peer"
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                    background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)",
+                    borderRadius: 6, padding: "3px 10px", fontSize: 11, color: "rgba(255,255,255,0.85)",
+                    cursor: weather.forecast?.length ? "default" : undefined,
+                  }}
+                >
+                  {weather.temp != null ? `${tu === "F" ? `${(weather.temp * 9/5 + 32).toFixed(0)}°F` : `${weather.temp.toFixed(0)}°C`}` : ""}
+                  {weather.condition ? ` · ${weather.condition}` : ""}
+                  {weather.forecast?.length ? (
+                    <svg width="8" height="8" viewBox="0 0 8 8" style={{ opacity: 0.4 }}><path d="M2 3l2 2.5L6 3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  ) : null}
+                </span>
+                {/* 3-day forecast popup on hover */}
+                {weather.forecast && weather.forecast.length > 0 && (
+                  <div
+                    className="absolute left-0 opacity-0 pointer-events-none peer-hover:opacity-100 peer-hover:pointer-events-auto hover:opacity-100 hover:pointer-events-auto"
+                    style={{
+                      top: "calc(100% + 6px)", zIndex: 50, minWidth: 200,
+                      background: "rgba(14,14,14,0.97)", border: "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: 10, padding: "10px 12px",
+                      backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+                      boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+                      transition: "opacity 0.15s ease",
+                    }}
+                  >
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 8, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase" }}>3-Day Forecast</div>
+                    <div className="flex flex-col gap-1.5">
+                      {weather.forecast.map((d, i) => (
+                        <div key={i} className="flex items-center justify-between gap-4" style={{ fontSize: 12 }}>
+                          <span style={{ color: "rgba(255,255,255,0.6)", minWidth: 28 }}>{d.date}</span>
+                          <span style={{ fontSize: 14 }}>{d.emoji}</span>
+                          <span className="flex-1" style={{ color: "rgba(255,255,255,0.4)", fontSize: 10 }}>{d.condition}</span>
+                          <span className="font-mono tabular-nums" style={{ color: "rgba(255,255,255,0.85)" }}>
+                            {tu === "F" ? `${Math.round(d.high * 9/5 + 32)}°` : `${d.high}°`}
+                          </span>
+                          <span className="font-mono tabular-nums" style={{ color: "rgba(255,255,255,0.35)" }}>
+                            {tu === "F" ? `${Math.round(d.low * 9/5 + 32)}°` : `${d.low}°`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </span>
             )}
           </div>
@@ -1949,8 +2135,8 @@ export default function Dashboard() {
         <div className="max-w-5xl mx-auto px-6 pb-10 flex flex-col gap-6" style={{ paddingTop: 80 }}>
 
 
-          {/* ── google search ── */}
-          <GoogleSearch inputRef={searchInputRef} />
+          {/* ── search bar ── */}
+          <SearchBar inputRef={searchInputRef} engine={settings.searchEngine} />
 
           {/* ── mikrotik tab ── */}
           <MikrotikTab mikrotikUrl={clientConfig?.mikrotikUrl ?? "http://192.168.88.1"} />
