@@ -58,6 +58,7 @@ export interface ResolvedConfig {
     datasourceUid?: string;
     panelId:        string;
     dashboardSlug:  string;
+    panels:         { panelId: string; label: string; size: "sm" | "md" | "lg" }[];
   };
   prometheusUrl: string;
   fsPathPrefix:  string;
@@ -67,6 +68,7 @@ export interface ResolvedConfig {
   preferences: {
     searchEngine: string;   // "google" | "bing" | "duckduckgo" | "kagi"
     timezone:     string;   // IANA timezone (e.g. "Australia/Hobart"), "" = browser local
+    theme:        string;   // "midnight" | "forge" | "forest" | "plum" | "paper"
   };
 }
 
@@ -76,8 +78,8 @@ export interface PartialFileConfig {
   truenasIp?: string;
   mikrotik?: { url?: string; username?: string; password?: string };
   services?: Partial<Record<ServiceName, { url?: string; apiKey?: string; username?: string; password?: string }>>;
-  grafana?:  { baseUrl?: string; dashboardUid?: string; datasourceUid?: string; panelId?: string; dashboardSlug?: string };
-  preferences?: { searchEngine?: string; timezone?: string };
+  grafana?:  { baseUrl?: string; dashboardUid?: string; datasourceUid?: string; panelId?: string; dashboardSlug?: string; panels?: { panelId: string; label: string; size: "sm" | "md" | "lg" }[] };
+  preferences?: { searchEngine?: string; timezone?: string; theme?: string };
 }
 
 // ── service manifest ──────────────────────────────────────────────────────
@@ -214,6 +216,7 @@ export async function loadConfig(): Promise<ResolvedConfig> {
       datasourceUid:  pick(file?.grafana?.datasourceUid,  process.env.GRAFANA_DATASOURCE_UID,  "") || undefined,
       panelId:        pick(file?.grafana?.panelId,        process.env.GRAFANA_PANEL_ID,        "panel-77"),
       dashboardSlug:  pick(file?.grafana?.dashboardSlug,  process.env.GRAFANA_DASHBOARD_SLUG,  "node-exporter-full"),
+      panels:         file?.grafana?.panels ?? [],
     },
     prometheusUrl: pick(undefined, process.env.PROMETHEUS_URL, `http://${truenasIp}:30104`),
     fsPathPrefix:  pick(undefined, process.env.FS_PATH_PREFIX, "/mnt/Pool/Media/"),
@@ -226,6 +229,7 @@ export async function loadConfig(): Promise<ResolvedConfig> {
     preferences: {
       searchEngine: pick(file?.preferences?.searchEngine, process.env.SEARCH_ENGINE, "google"),
       timezone:     pick(file?.preferences?.timezone,     process.env.TIMEZONE,       ""),
+      theme:        pick(file?.preferences?.theme,        process.env.THEME,          "midnight"),
     },
   };
 

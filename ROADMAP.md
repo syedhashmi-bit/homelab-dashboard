@@ -27,116 +27,74 @@ key). `ForecastDay` type exported from weather route.
 
 ---
 
-## Tier 2 — medium lift (1-2 days each)
+## Tier 2 — medium lift ✅ shipped
 
-### Editable bookmarks in the UI
-Today: bookmarks live in `bookmarks.json` mounted into the container, edited
-on the host. Goal: edit from inside the dashboard — add/remove sections, add
-items, upload custom icons.
+### ✅ Editable bookmarks in the UI
+Shipped. Inline editing directly on the dashboard — add/remove sections, add/remove
+items, reorder via up/down buttons. New `/api/bookmarks` POST endpoint writes to
+`data/bookmarks.json`. Icons use favicon URL field (base64 capped at ~15kb).
+Existing `bookmarks.json` mount keeps working as read-only fallback.
 
-- New panel in `/setup` (or a separate `/bookmarks` editor route).
-- Icon upload: store as base64 inline in the bookmark item so we don't need a
-  static file server. Cap at ~10kb each to keep `config.json` reasonable.
-  Fallback URL field for when the user just wants a favicon link.
-- Reorder via drag-and-drop (use HTML5 native DnD, no library).
-- Migration: existing `bookmarks.json` mount keeps working as a read-only
-  override (env-var deploys don't lose anything).
-
-### Multi-Grafana with size picker
-Today: one Grafana panel, fixed slot in the grid. Goal: arbitrary number of
-panels with size choice.
-
-- Sizes: `sm` (1 grid col), `md` (2 cols), `lg` (3 cols / full width).
-- Config shape: `grafana.panels: [{ baseUrl, dashboardUid, datasourceUid,
-  panelId, size, label }]`.
-- UI in `/setup`: "+ Add panel" button, per-panel form, size radio.
-- Frontend: render the panels array inline at the end of the metric grid; size
-  controls `col-span-{1,2,3}`. The existing single `GrafanaCard` becomes the
-  per-panel renderer.
+### ✅ Multi-Grafana with size picker
+Shipped. `grafana.panels` array in config, each with `panelId`, `label`, and
+`size` (`sm`=1col, `md`=2col, `lg`=3col/full-width). Setup wizard has "+ Add
+panel" UI with size radio. `GrafanaCard` refactored into `GrafanaPanel` (single
+iframe) + `GrafanaCard` (multi-panel grid layout).
 
 ---
 
-## Tier 3 — big lift (multi-day)
+## Tier 3 — big lift ✅ shipped
 
-### First-run welcome flow + 5 themes
-The single biggest UX upgrade. Goal: first-time visitor (no `data/config.json`
-on disk) is redirected to a guided multi-step wizard instead of dropped onto
-an empty dashboard.
+### ✅ First-run welcome flow + 5 themes
+Shipped. CSS-variable refactor replaced ~250 hardcoded colors with custom
+properties (`--bg`, `--card`, `--text`, `--brand`, etc.). Five theme classes
+in `globals.css`: **Midnight** (cyan), **Forge** (amber), **Forest** (emerald),
+**Plum** (magenta), **Paper** (light). Theme flash prevention via inline
+`<script>` in `layout.tsx` reading localStorage before React hydrates.
 
-**Steps:**
-1. **Welcome** — what ComExe does, what the next steps will look like (~30s).
-2. **Pick a theme** — preview tiles for 5 themes (see below). Selection writes
-   `config.theme`.
-3. **Connect services** — the existing `/setup` form, broken into smaller
-   chunks (one category per step instead of one giant page).
-4. **Done** — confirmation page with the line "you can change any of this
-   anytime at `http://<your-host>:3000/setup`" and a "Go to dashboard" button.
+Welcome flow at `/welcome` — 4-step wizard:
+1. Welcome — logo, what ComExe does, overview of next steps
+2. Pick a theme — 5 tiles with live preview
+3. Connect services — links to `/setup` wizard
+4. Done — confirmation + "Go to dashboard" button
 
-**5 themes** — this is the non-trivial part. Codebase currently has
-hardcoded brand colors (`#06b6d4` cyan, `#0a0c12` bg) sprinkled across inline
-`style` props in `app/page.tsx`. Need to refactor to **CSS variables** first:
+Auto-redirect from `/` to `/welcome` when zero services configured and
+welcome-done flag not set. Theme persisted to localStorage + server config.
 
-- `--bg`, `--card`, `--text`, `--text-muted`, `--brand`, `--brand-dim`,
-  `--ok`, `--warn`, `--critical`, plus per-card accents.
-- Themes (suggested):
-  1. **Midnight Cyan** (current) — `#0a0c12` + `#06b6d4`
-  2. **Forge** — warm dark, amber accents (`#1a1410` + `#f59e0b`)
-  3. **Forest** — deep green-black, emerald accents (`#0a1410` + `#10b981`)
-  4. **Plum** — purple-black, magenta accents (`#120a18` + `#d946ef`)
-  5. **Paper** — light theme, slate accents (`#f8fafc` + `#0f172a`)
-- Per-card accent assignments (CPU, Memory, etc.) stay theme-relative — each
-  theme picks its own mapping of "5 distinct accent hues".
+### ✅ Beginner-friendliness pass
+Shipped. All items except the YouTube walkthrough (separate non-code task):
 
-**Why this is multi-day:** the CSS-variable refactor alone touches every
-component. Maybe 200+ inline `style={{ color: "#..." }}` props to replace
-with `style={{ color: "var(--text)" }}`. Worth scoping its own commit.
-
-### Beginner-friendliness pass
-Cross-cutting theme tying everything above together. Concrete asks:
-
-- **Tooltips on every API-key field** — "Where do I find this?" with the
-  exact path inside each service's UI (e.g. Radarr → Settings → General →
-  Security → API Key).
-- **"What is this?" links** — small ⓘ next to every metric card that opens
-  a short Markdown explainer in a modal. Especially useful for things like
-  "Memory pressure (real)" or "ZFS ARC".
-- **Inline service-down hints** — instead of just a red dot when Radarr is
-  unreachable, show a one-line hint: "Can't reach `192.168.88.196:30025` —
-  is the container running?".
-- **Sample-data demo mode** — `?demo=1` query param that bypasses all API
-  routes and renders the dashboard with realistic fake data, so new users
-  can see what they're aiming at before configuring anything.
-- **A 2-minute YouTube walkthrough** linked from INSTALL.md (separate task,
-  not code).
+- **API-key help tooltips** — every service in `/setup` has a "Where to find
+  it:" hint with the exact UI path (e.g. Radarr → Settings → General → API Key).
+- **Info modals on metric cards** — ⓘ icon on Card component, hover shows
+  plain-English explainer for CPU, Memory, Filesystems, Network, GPU,
+  Speedtest, System, Grafana.
+- **Inline service-down hints** — "Can't reach {url} — is the container
+  running?" instead of a bare red dot.
+- **Demo mode** — `?demo=1` bypasses all API polling, seeds realistic fake
+  data for every card. Orange banner with dismiss link.
 
 ---
 
-## Sequencing recommendation
+## Sequencing (completed)
 
-Tier 1 is done. Suggested order for the remaining work:
+All tiers shipped. Order was:
 
-1. ~~Search engine picker + timezone + forecast~~ — **done.**
-2. **CSS-variable refactor** as a standalone commit — no functional change,
-   prepares the ground for themes. Has to land before themes can ship.
-4. **5 themes + theme picker UI** — sits on top of (3).
-5. **Welcome flow** — once themes exist, wire them into the first-run wizard.
-6. **Editable bookmarks** — independent of all the above; can slot in anywhere.
-7. **Multi-Grafana** — independent. Slot it in when you've got a need for it.
-8. **Beginner-friendliness pass** — ongoing, tackle in small PRs alongside
-   the bigger features.
+1. ✅ Search engine picker + timezone + forecast
+2. ✅ CSS-variable refactor (standalone commit `8cca9b2`)
+3. ✅ 5 themes + theme picker UI
+4. ✅ Welcome flow
+5. ✅ Editable bookmarks
+6. ✅ Multi-Grafana with size picker
+7. ✅ Beginner-friendliness pass (tooltips, info modals, demo mode, service hints)
 
 ---
 
-## Open questions
+## Resolved decisions
 
-- **Weather provider** — open-meteo (current, free, keyless) vs switchable to
-  OpenWeatherMap (paid, more features)? Recommend: stay on open-meteo,
-  add forecast. Switching providers is rarely worth the API-key tax for a
-  homelab dashboard.
-- **Icon upload format** — base64 inline (simpler) vs a `data/icons/` dir
-  served via a new route (cleaner, scales)? Lean toward base64 unless someone
-  wants hundreds of bookmarks.
-- **Theme persistence** — server-side (`config.json`, syncs across devices)
-  or `localStorage` (per-browser)? Server-side matches the rest of ComExe.
-- **Demo mode data** — generate at request time vs ship a fixed JSON fixture?
-  Fixture is simpler and lets you test deterministically.
+- **Weather provider** — stayed on open-meteo (free, keyless). Added 3-day forecast.
+- **Icon upload format** — base64 inline with ~15kb cap. Favicon URL fallback for simplicity.
+- **Theme persistence** — both: server-side `config.json` seeds new browsers, localStorage
+  overrides per-browser. Welcome wizard and settings panel write both.
+- **Demo mode data** — generated at request time in `buildDemoMetrics()` / `buildDemoServices()`
+  with realistic values. Deterministic enough for visual testing.

@@ -24,6 +24,7 @@ export interface ClientConfig {
     dashboardUid?:  string;
     datasourceUid?: string;
     panelId?:       string;
+    panels:         { panelId: string; label: string; size: "sm" | "md" | "lg"; url: string }[];
   };
   serviceUrls:  Record<string, string>;
   bookmarks:    BookmarkColumn[];
@@ -31,6 +32,7 @@ export interface ClientConfig {
   preferences: {
     searchEngine: string;
     timezone:     string;
+    theme:        string;
   };
   // True when the data/ volume is writable, i.e. POST will succeed. The wizard
   // shows different copy if false.
@@ -86,24 +88,35 @@ export async function GET() {
   const config = await loadConfig();
   const writable = await isConfigWritable();
 
-  // Compose the Grafana iframe URL only when both UIDs are set.
-  let panelUrl: string | null = null;
-  if (config.grafana.dashboardUid && config.grafana.datasourceUid) {
+  // Helper: build a Grafana panel iframe URL for a given panelId.
+  function buildPanelUrl(panelId: string): string | null {
+    if (!config.grafana.dashboardUid || !config.grafana.datasourceUid) return null;
     const params = new URLSearchParams({
       orgId:               "1",
       from:                "now-24h",
       to:                  "now",
       timezone:            "browser",
-      "var-ds_prometheus": config.grafana.datasourceUid,
+      "var-ds_prometheus": config.grafana.datasourceUid!,
       "var-job":           "node",
       "var-nodename":      "truenas",
       "var-node":          "truenas",
       refresh:             "1m",
-      panelId:             config.grafana.panelId,
+      panelId,
       theme:               "dark",
     });
-    panelUrl = `${config.grafana.baseUrl}/d-solo/${config.grafana.dashboardUid}/${config.grafana.dashboardSlug}?${params}`;
+    return `${config.grafana.baseUrl}/d-solo/${config.grafana.dashboardUid}/${config.grafana.dashboardSlug}?${params}`;
   }
+
+  const panelUrl = buildPanelUrl(config.grafana.panelId);
+
+  // Build multi-panel URLs from the panels array in config
+  const panels: ClientConfig["grafana"]["panels"] = (config.grafana.panels ?? [])
+    .map(p => {
+      const url = buildPanelUrl(p.panelId);
+      if (!url) return null;
+      return { panelId: p.panelId, label: p.label, size: p.size, url };
+    })
+    .filter((p): p is NonNullable<typeof p> => p !== null);
 
   const serviceUrls: Record<string, string> = Object.fromEntries(
     Object.entries(config.services).map(([name, creds]) => [name, creds.url])
@@ -119,6 +132,7 @@ export async function GET() {
       dashboardUid:  config.grafana.dashboardUid,
       datasourceUid: config.grafana.datasourceUid,
       panelId:       config.grafana.panelId,
+      panels,
     },
     serviceUrls,
     bookmarks:    await loadBookmarks(),
@@ -145,7 +159,7 @@ interface PostBody {
   mikrotik?:  { url?: string; username?: string; password?: string };
   services?:  PartialFileConfig["services"];
   grafana?:   PartialFileConfig["grafana"];
-  preferences?: { searchEngine?: string; timezone?: string };
+  preferences?: { searchEngine?: string; timezone?: string; theme?: string };
 }
 
 function isStringOrUndef(v: unknown): v is string | undefined {
@@ -181,12 +195,23 @@ function validateBody(b: unknown): { ok: true; cfg: PartialFileConfig } | { ok: 
     for (const k of ["baseUrl", "dashboardUid", "datasourceUid", "panelId", "dashboardSlug"]) {
       if (!isStringOrUndef((obj.grafana as Record<string, unknown>)[k])) return { ok: false, message: `grafana.${k} must be a string` };
     }
+    const panels = (obj.grafana as Record<string, unknown>).panels;
+    if (panels !== undefined) {
+      if (!Array.isArray(panels)) return { ok: false, message: "grafana.panels must be an array" };
+      for (let i = 0; i < panels.length; i++) {
+        const p = panels[i] as Record<string, unknown>;
+        if (typeof p.panelId !== "string") return { ok: false, message: `grafana.panels[${i}].panelId must be a string` };
+        if (typeof p.label !== "string")   return { ok: false, message: `grafana.panels[${i}].label must be a string` };
+        if (!["sm", "md", "lg"].includes(p.size as string)) return { ok: false, message: `grafana.panels[${i}].size must be "sm", "md", or "lg"` };
+      }
+    }
   }
 
   if (obj.preferences !== undefined) {
     if (typeof obj.preferences !== "object" || obj.preferences === null) return { ok: false, message: "preferences must be an object" };
     if (!isStringOrUndef((obj.preferences as Record<string, unknown>).searchEngine)) return { ok: false, message: "preferences.searchEngine must be a string" };
     if (!isStringOrUndef((obj.preferences as Record<string, unknown>).timezone))     return { ok: false, message: "preferences.timezone must be a string" };
+    if (!isStringOrUndef((obj.preferences as Record<string, unknown>).theme))        return { ok: false, message: "preferences.theme must be a string" };
   }
 
   return { ok: true, cfg: obj as PartialFileConfig };

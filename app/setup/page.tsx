@@ -24,20 +24,21 @@ interface ServiceSpec {
   envKeys:      { url: string; apiKey?: string; username?: string; password?: string; };
   category:     "media" | "infra";
   description:  string;
+  helpText?:    string;   // "Where do I find this?" hint for the API key / password
 }
 
 const SERVICES: ServiceSpec[] = [
-  { id: "radarr",      label: "Radarr",            defaultPort: 30025, authShape: "apikey",   category: "media", envKeys: { url: "RADARR_URL",      apiKey: "RADARR_API_KEY"      }, description: "Movies library + queue" },
-  { id: "sonarr",      label: "Sonarr",            defaultPort: 33027, authShape: "apikey",   category: "media", envKeys: { url: "SONARR_URL",      apiKey: "SONARR_API_KEY"      }, description: "TV series library + queue" },
-  { id: "bazarr",      label: "Bazarr",            defaultPort: 30046, authShape: "apikey",   category: "media", envKeys: { url: "BAZARR_URL",      apiKey: "BAZARR_API_KEY"      }, description: "Subtitle downloader" },
-  { id: "tautulli",    label: "Tautulli",          defaultPort: 30047, authShape: "apikey",   category: "media", envKeys: { url: "TAUTULLI_URL",    apiKey: "TAUTULLI_API_KEY"    }, description: "Plex stream / history stats" },
-  { id: "qbittorrent", label: "qBittorrent",       defaultPort: 30024, authShape: "userpass", category: "media", envKeys: { url: "QBIT_URL",        username: "QBIT_USERNAME", password: "QBIT_PASSWORD" }, description: "Torrent client" },
-  { id: "overseerr",   label: "Overseerr",         defaultPort: 30002, authShape: "apikey",   category: "media", envKeys: { url: "OVERSEERR_URL",   apiKey: "OVERSEERR_API_KEY"   }, description: "Request management" },
-  { id: "prowlarr",    label: "Prowlarr",          defaultPort: 30050, authShape: "apikey",   category: "media", envKeys: { url: "PROWLARR_URL",    apiKey: "PROWLARR_API_KEY"    }, description: "Indexer manager" },
-  { id: "pihole",      label: "Pi-hole",           defaultPort: 20720, authShape: "password", category: "infra", envKeys: { url: "PIHOLE_URL",      password: "PIHOLE_PASSWORD"   }, description: "DNS-level ad/tracker blocking" },
-  { id: "nginx",       label: "Nginx Proxy Mgr",   defaultPort: 30020, authShape: "userpass", category: "infra", envKeys: { url: "NGINX_URL",       username: "NGINX_USERNAME", password: "NGINX_PASSWORD" }, description: "Reverse proxy admin" },
-  { id: "uptimekuma",  label: "Uptime Kuma",       defaultPort: 31050, authShape: "bearer",   category: "infra", envKeys: { url: "UPTIME_KUMA_URL", apiKey: "UPTIME_KUMA_API_KEY" }, description: "External monitor (optional auth — /metrics works without)" },
-  { id: "speedtest",   label: "SpeedTracker",      defaultPort: 30220, authShape: "bearer",   category: "infra", envKeys: { url: "SPEEDTEST_URL",   apiKey: "SPEEDTEST_API_KEY"   }, description: "Speedtest history (display only)" },
+  { id: "radarr",      label: "Radarr",            defaultPort: 30025, authShape: "apikey",   category: "media", envKeys: { url: "RADARR_URL",      apiKey: "RADARR_API_KEY"      }, description: "Movies library + queue", helpText: "Settings → General → Security → API Key" },
+  { id: "sonarr",      label: "Sonarr",            defaultPort: 33027, authShape: "apikey",   category: "media", envKeys: { url: "SONARR_URL",      apiKey: "SONARR_API_KEY"      }, description: "TV series library + queue", helpText: "Settings → General → Security → API Key" },
+  { id: "bazarr",      label: "Bazarr",            defaultPort: 30046, authShape: "apikey",   category: "media", envKeys: { url: "BAZARR_URL",      apiKey: "BAZARR_API_KEY"      }, description: "Subtitle downloader", helpText: "Settings → General → Security → API Key" },
+  { id: "tautulli",    label: "Tautulli",          defaultPort: 30047, authShape: "apikey",   category: "media", envKeys: { url: "TAUTULLI_URL",    apiKey: "TAUTULLI_API_KEY"    }, description: "Plex stream / history stats", helpText: "Settings → Web Interface → API key" },
+  { id: "qbittorrent", label: "qBittorrent",       defaultPort: 30024, authShape: "userpass", category: "media", envKeys: { url: "QBIT_URL",        username: "QBIT_USERNAME", password: "QBIT_PASSWORD" }, description: "Torrent client", helpText: "Tools → Options → Web UI → Authentication" },
+  { id: "overseerr",   label: "Overseerr",         defaultPort: 30002, authShape: "apikey",   category: "media", envKeys: { url: "OVERSEERR_URL",   apiKey: "OVERSEERR_API_KEY"   }, description: "Request management", helpText: "Settings → General → API Key (copy from the top)" },
+  { id: "prowlarr",    label: "Prowlarr",          defaultPort: 30050, authShape: "apikey",   category: "media", envKeys: { url: "PROWLARR_URL",    apiKey: "PROWLARR_API_KEY"    }, description: "Indexer manager", helpText: "Settings → General → Security → API Key" },
+  { id: "pihole",      label: "Pi-hole",           defaultPort: 20720, authShape: "password", category: "infra", envKeys: { url: "PIHOLE_URL",      password: "PIHOLE_PASSWORD"   }, description: "DNS-level ad/tracker blocking", helpText: "The password you set during Pi-hole installation" },
+  { id: "nginx",       label: "Nginx Proxy Mgr",   defaultPort: 30020, authShape: "userpass", category: "infra", envKeys: { url: "NGINX_URL",       username: "NGINX_USERNAME", password: "NGINX_PASSWORD" }, description: "Reverse proxy admin", helpText: "The email and password you log in with" },
+  { id: "uptimekuma",  label: "Uptime Kuma",       defaultPort: 31050, authShape: "bearer",   category: "infra", envKeys: { url: "UPTIME_KUMA_URL", apiKey: "UPTIME_KUMA_API_KEY" }, description: "External monitor (optional auth — /metrics works without)", helpText: "Settings → API Keys → Add (optional — unauthenticated /metrics works)" },
+  { id: "speedtest",   label: "SpeedTracker",      defaultPort: 30220, authShape: "bearer",   category: "infra", envKeys: { url: "SPEEDTEST_URL",   apiKey: "SPEEDTEST_API_KEY"   }, description: "Speedtest history (display only)", helpText: "SpeedTracker Settings → Authentication → API Token" },
 ];
 
 type TestStatus = { state: "idle" } | { state: "testing" } | { state: "ok"; msg: string } | { state: "err"; msg: string };
@@ -55,8 +56,8 @@ interface WizardState {
   truenasIp: string;
   rows:      Record<string, ServiceRow>;
   mikrotik:  { enabled: boolean; url: string; username: string; password: string; testStatus: TestStatus };
-  grafana:   { enabled: boolean; baseUrl: string; dashboardUid: string; datasourceUid: string; panelId: string };
-  preferences: { searchEngine: string; timezone: string };
+  grafana:   { enabled: boolean; baseUrl: string; dashboardUid: string; datasourceUid: string; panelId: string; panels: { panelId: string; label: string; size: "sm" | "md" | "lg" }[] };
+  preferences: { searchEngine: string; timezone: string; theme: string };
 }
 
 const LS_KEY = "comexe:setup-wizard";
@@ -69,8 +70,8 @@ function defaultState(): WizardState {
       password: "", testStatus: { state: "idle" } as TestStatus,
     }])),
     mikrotik: { enabled: false, url: "http://192.168.88.1", username: "monitor-only", password: "", testStatus: { state: "idle" } },
-    grafana:  { enabled: false, baseUrl: "", dashboardUid: "", datasourceUid: "", panelId: "panel-77" },
-    preferences: { searchEngine: "google", timezone: "" },
+    grafana:  { enabled: false, baseUrl: "", dashboardUid: "", datasourceUid: "", panelId: "panel-77", panels: [] },
+    preferences: { searchEngine: "google", timezone: "", theme: "midnight" },
   };
 }
 
@@ -288,8 +289,8 @@ export default function SetupWizard() {
       truenasIp: string;
       mikrotik?: { url: string; username: string; password: string };
       services:  Record<string, { url?: string; apiKey?: string; username?: string; password?: string }>;
-      grafana?:  { baseUrl?: string; dashboardUid?: string; datasourceUid?: string; panelId?: string };
-      preferences?: { searchEngine?: string; timezone?: string };
+      grafana?:  { baseUrl?: string; dashboardUid?: string; datasourceUid?: string; panelId?: string; panels?: { panelId: string; label: string; size: "sm" | "md" | "lg" }[] };
+      preferences?: { searchEngine?: string; timezone?: string; theme?: string };
     } = {
       truenasIp: state.truenasIp,
       services:  {},
@@ -327,6 +328,7 @@ export default function SetupWizard() {
         dashboardUid:  state.grafana.dashboardUid  || undefined,
         datasourceUid: state.grafana.datasourceUid || undefined,
         panelId:       state.grafana.panelId       || undefined,
+        panels:        state.grafana.panels.length > 0 ? state.grafana.panels : undefined,
       };
     }
 
@@ -334,6 +336,7 @@ export default function SetupWizard() {
     body.preferences = {
       searchEngine: state.preferences.searchEngine || undefined,
       timezone:     state.preferences.timezone     || undefined,
+      theme:        state.preferences.theme        || undefined,
     };
 
     try {
@@ -408,27 +411,35 @@ export default function SetupWizard() {
                   <div style={{ marginLeft: "auto" }}><StatusPill status={row.testStatus} /></div>
                 </div>
                 {row.enabled && (
-                  <div style={{ marginTop: 12, marginLeft: 26, display: "grid", gridTemplateColumns: "minmax(280px, 2fr) 1fr 1fr auto", gap: 10, alignItems: "end" }}>
-                    <Field label="URL" value={row.url} onChange={v => updateRow(svc.id, { url: v })} mono />
-                    {svc.authShape === "apikey" && (
-                      <Field label="API key" value={row.apiKey} onChange={v => updateRow(svc.id, { apiKey: v })} type={showPasswords ? "text" : "password"} mono />
+                  <div style={{ marginTop: 12, marginLeft: 26, display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, 2fr) 1fr 1fr auto", gap: 10, alignItems: "end" }}>
+                      <Field label="URL" value={row.url} onChange={v => updateRow(svc.id, { url: v })} mono />
+                      {svc.authShape === "apikey" && (
+                        <Field label="API key" value={row.apiKey} onChange={v => updateRow(svc.id, { apiKey: v })} type={showPasswords ? "text" : "password"} mono />
+                      )}
+                      {svc.authShape === "bearer" && (
+                        <Field label="Bearer token (optional)" value={row.apiKey} onChange={v => updateRow(svc.id, { apiKey: v })} type={showPasswords ? "text" : "password"} mono />
+                      )}
+                      {svc.authShape === "userpass" && <>
+                        <Field label="Username" value={row.username} onChange={v => updateRow(svc.id, { username: v })} mono />
+                        <Field label="Password" value={row.password} onChange={v => updateRow(svc.id, { password: v })} type={showPasswords ? "text" : "password"} mono />
+                      </>}
+                      {svc.authShape === "password" && (
+                        <Field label="Password" value={row.password} onChange={v => updateRow(svc.id, { password: v })} type={showPasswords ? "text" : "password"} mono />
+                      )}
+                      {(svc.authShape === "apikey" || svc.authShape === "bearer") && (
+                        <div /> // spacer to fill the 3rd column
+                      )}
+                      <Btn onClick={() => testService(svc.id)} disabled={row.testStatus.state === "testing"}>
+                        {row.testStatus.state === "testing" ? "…" : "Test"}
+                      </Btn>
+                    </div>
+                    {svc.helpText && (
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", display: "flex", alignItems: "center", gap: 4 }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, borderRadius: 7, border: "1px solid rgba(255,255,255,0.15)", fontSize: 9, color: "rgba(255,255,255,0.4)", flexShrink: 0 }}>?</span>
+                        <span>Where to find it: <em>{svc.helpText}</em></span>
+                      </div>
                     )}
-                    {svc.authShape === "bearer" && (
-                      <Field label="Bearer token (optional)" value={row.apiKey} onChange={v => updateRow(svc.id, { apiKey: v })} type={showPasswords ? "text" : "password"} mono />
-                    )}
-                    {svc.authShape === "userpass" && <>
-                      <Field label="Username" value={row.username} onChange={v => updateRow(svc.id, { username: v })} mono />
-                      <Field label="Password" value={row.password} onChange={v => updateRow(svc.id, { password: v })} type={showPasswords ? "text" : "password"} mono />
-                    </>}
-                    {svc.authShape === "password" && (
-                      <Field label="Password" value={row.password} onChange={v => updateRow(svc.id, { password: v })} type={showPasswords ? "text" : "password"} mono />
-                    )}
-                    {(svc.authShape === "apikey" || svc.authShape === "bearer") && (
-                      <div /> // spacer to fill the 3rd column
-                    )}
-                    <Btn onClick={() => testService(svc.id)} disabled={row.testStatus.state === "testing"}>
-                      {row.testStatus.state === "testing" ? "…" : "Test"}
-                    </Btn>
                   </div>
                 )}
               </div>
@@ -484,11 +495,55 @@ export default function SetupWizard() {
             <span style={{ fontSize: 13, fontWeight: 600, color: state.grafana.enabled ? "#fff" : "rgba(255,255,255,0.5)" }}>Grafana panel</span>
           </div>
           {state.grafana.enabled && (
-            <div style={{ marginTop: 12, marginLeft: 26, display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
-              <Field label="Grafana URL" value={state.grafana.baseUrl} onChange={v => setState(s => ({ ...s, grafana: { ...s.grafana, baseUrl: v } }))} mono />
-              <Field label="Dashboard UID" value={state.grafana.dashboardUid} onChange={v => setState(s => ({ ...s, grafana: { ...s.grafana, dashboardUid: v } }))} placeholder="rYdddlPWk" mono />
-              <Field label="Datasource UID" value={state.grafana.datasourceUid} onChange={v => setState(s => ({ ...s, grafana: { ...s.grafana, datasourceUid: v } }))} placeholder="cflfv1hjeg9vka" mono />
-              <Field label="Panel ID" value={state.grafana.panelId} onChange={v => setState(s => ({ ...s, grafana: { ...s.grafana, panelId: v } }))} placeholder="panel-77" mono />
+            <div style={{ marginTop: 12, marginLeft: 26, display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
+                <Field label="Grafana URL" value={state.grafana.baseUrl} onChange={v => setState(s => ({ ...s, grafana: { ...s.grafana, baseUrl: v } }))} mono />
+                <Field label="Dashboard UID" value={state.grafana.dashboardUid} onChange={v => setState(s => ({ ...s, grafana: { ...s.grafana, dashboardUid: v } }))} placeholder="rYdddlPWk" mono />
+                <Field label="Datasource UID" value={state.grafana.datasourceUid} onChange={v => setState(s => ({ ...s, grafana: { ...s.grafana, datasourceUid: v } }))} placeholder="cflfv1hjeg9vka" mono />
+                <Field label="Default Panel ID" value={state.grafana.panelId} onChange={v => setState(s => ({ ...s, grafana: { ...s.grafana, panelId: v } }))} placeholder="panel-77" mono />
+              </div>
+
+              {/* Multi-panel support */}
+              <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Additional panels</span>
+                  <button onClick={() => {
+                    const s = { ...state, grafana: { ...state.grafana, panels: [...state.grafana.panels, { panelId: "", label: "", size: "md" as const }] } };
+                    setState(s); saveState(s);
+                  }} style={{
+                    fontSize: 10, color: "#f97316", background: "rgba(249,115,22,0.08)",
+                    border: "1px solid rgba(249,115,22,0.2)", borderRadius: 5,
+                    padding: "3px 10px", cursor: "pointer",
+                  }}>+ Add panel</button>
+                </div>
+                {state.grafana.panels.map((panel, pi) => (
+                  <div key={pi} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto auto", gap: 8, marginBottom: 6, alignItems: "end" }}>
+                    <Field label={pi === 0 ? "Panel ID" : ""} value={panel.panelId} placeholder="panel-42"
+                      onChange={v => { const s = { ...state, grafana: { ...state.grafana, panels: state.grafana.panels.map((p, i) => i === pi ? { ...p, panelId: v } : p) } }; setState(s); saveState(s); }} mono />
+                    <Field label={pi === 0 ? "Label" : ""} value={panel.label} placeholder="CPU Temp"
+                      onChange={v => { const s = { ...state, grafana: { ...state.grafana, panels: state.grafana.panels.map((p, i) => i === pi ? { ...p, label: v } : p) } }; setState(s); saveState(s); }} />
+                    <div style={{ display: "flex", gap: 4, paddingBottom: 2 }}>
+                      {(["sm", "md", "lg"] as const).map(sz => (
+                        <button key={sz} onClick={() => { const s = { ...state, grafana: { ...state.grafana, panels: state.grafana.panels.map((p, i) => i === pi ? { ...p, size: sz } : p) } }; setState(s); saveState(s); }}
+                          style={{
+                            fontSize: 9, padding: "4px 8px", borderRadius: 4, cursor: "pointer",
+                            background: panel.size === sz ? "rgba(249,115,22,0.2)" : "rgba(255,255,255,0.03)",
+                            border: `1px solid ${panel.size === sz ? "rgba(249,115,22,0.4)" : "rgba(255,255,255,0.08)"}`,
+                            color: panel.size === sz ? "#f97316" : "rgba(255,255,255,0.35)",
+                            fontWeight: panel.size === sz ? 600 : 400,
+                          }}>{sz.toUpperCase()}</button>
+                      ))}
+                    </div>
+                    <button onClick={() => { const s = { ...state, grafana: { ...state.grafana, panels: state.grafana.panels.filter((_, i) => i !== pi) } }; setState(s); saveState(s); }}
+                      style={{ fontSize: 11, color: "#ef4444", background: "none", border: "none", cursor: "pointer", padding: "4px 6px" }} title="Remove">×</button>
+                  </div>
+                ))}
+                {state.grafana.panels.length === 0 && (
+                  <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", fontStyle: "italic" }}>
+                    No extra panels. The default panel above will be shown. Click &quot;+ Add panel&quot; to embed more.
+                  </span>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -507,7 +562,7 @@ export default function SetupWizard() {
       </div>
 
       {/* ── 5. Preferences ── */}
-      <Section title="5 · Preferences" subtitle="Search engine, timezone, and display defaults. These are optional — the dashboard works with sensible defaults.">
+      <Section title="5 · Preferences" subtitle="Search engine, timezone, theme, and display defaults. These are optional — the dashboard works with sensible defaults.">
         <div style={{
           display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
           background: "rgba(255,255,255,0.02)",
@@ -552,6 +607,41 @@ export default function SetupWizard() {
                 <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
               ))}
             </select>
+          </div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={{ display: "block", fontSize: 10, color: "rgba(255,255,255,0.35)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Theme</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              {([
+                { key: "midnight", label: "Midnight",  bg: "#0a0c12", brand: "#06b6d4" },
+                { key: "forge",    label: "Forge",     bg: "#12100a", brand: "#f59e0b" },
+                { key: "forest",   label: "Forest",    bg: "#080f0a", brand: "#10b981" },
+                { key: "plum",     label: "Plum",      bg: "#10081a", brand: "#d946ef" },
+                { key: "paper",    label: "Paper",     bg: "#f8fafc", brand: "#0284c7" },
+              ] as const).map(t => {
+                const active = state.preferences.theme === t.key;
+                return (
+                  <button key={t.key}
+                    onClick={() => { const s = { ...state, preferences: { ...state.preferences, theme: t.key } }; setState(s); saveState(s); }}
+                    style={{
+                      flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                      padding: "10px 4px", borderRadius: 8, cursor: "pointer",
+                      background: active ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.02)",
+                      border: `1.5px solid ${active ? t.brand : "rgba(255,255,255,0.08)"}`,
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    <div style={{
+                      width: 28, height: 28, borderRadius: 14, background: t.bg,
+                      border: `2.5px solid ${t.brand}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      <div style={{ width: 12, height: 12, borderRadius: 6, background: t.brand }} />
+                    </div>
+                    <span style={{ fontSize: 10, color: active ? "#fff" : "rgba(255,255,255,0.5)" }}>{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </Section>

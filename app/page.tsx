@@ -59,6 +59,15 @@ interface Metrics {
 }
 
 type SearchEngine = "google" | "bing" | "duckduckgo" | "kagi";
+type ThemeKey = "midnight" | "forge" | "forest" | "plum" | "paper";
+
+const THEMES: { key: ThemeKey; label: string; bg: string; brand: string }[] = [
+  { key: "midnight", label: "Midnight",  bg: "#0a0c12", brand: "#06b6d4" },
+  { key: "forge",    label: "Forge",     bg: "#12100a", brand: "#f59e0b" },
+  { key: "forest",   label: "Forest",    bg: "#080f0a", brand: "#10b981" },
+  { key: "plum",     label: "Plum",      bg: "#10081a", brand: "#d946ef" },
+  { key: "paper",    label: "Paper",     bg: "#f8fafc", brand: "#0284c7" },
+];
 
 interface Settings {
   refreshInterval: number;
@@ -67,6 +76,7 @@ interface Settings {
   visibleCards: Record<string, boolean>;
   searchEngine: SearchEngine;
   timezone: string; // IANA timezone, "" = browser local
+  theme: ThemeKey;
 }
 
 interface SpeedtestResult {
@@ -136,6 +146,7 @@ interface ClientConfig {
     dashboardUid?:  string;
     datasourceUid?: string;
     panelId?:       string;
+    panels?:        { panelId: string; label: string; size: "sm" | "md" | "lg"; url: string }[];
   };
   serviceUrls:  Record<string, string>;
   bookmarks:    BookmarkColumn[];
@@ -143,6 +154,7 @@ interface ClientConfig {
   preferences?: {
     searchEngine: string;
     timezone:     string;
+    theme:        string;
   };
 }
 
@@ -925,15 +937,27 @@ function LabeledBar({ label, right, percent, color, gradient }: {
   );
 }
 
+const CARD_INFO: Record<string, string> = {
+  cpu:         "CPU utilization across all cores from Prometheus node_exporter. Warn at 85%, critical at 95%.",
+  memory:      "Real memory usage = Total - Available - SReclaimable. ZFS ARC inflates raw MemAvailable on TrueNAS.",
+  filesystems: "Disk usage for mounts under the configured FS_PATH_PREFIX. Sorted by fullest first.",
+  network:     "Network throughput (rx/tx bytes per second) for the primary NIC, excluding virtual interfaces.",
+  gpu:         "NVIDIA GPU metrics from nvidia_smi_exporter. Temp warn at 80°C, critical at 90°C.",
+  speedtest:   "Recent speedtest results from SpeedTracker. Tests are scheduled automatically — never triggered by the dashboard.",
+  system:      "Basic system info: OS, kernel version, architecture, hostname, and uptime from node_exporter.",
+  grafana:     "Embedded Grafana panel. Configure GRAFANA_DASHBOARD_UID and GRAFANA_DATASOURCE_UID to enable.",
+};
+
 function Card({
   label, subtitle, children, accent = "#06b6d4", alertLevel = null,
-  icon, expanded = false, onToggle, externalLink, animDelay = 0,
+  icon, expanded = false, onToggle, externalLink, animDelay = 0, info,
 }: {
   label: string; subtitle?: string; children: React.ReactNode; accent?: string;
   alertLevel?: AlertLevel; icon?: React.ReactNode; expanded?: boolean; onToggle?: () => void;
-  externalLink?: string; animDelay?: number;
+  externalLink?: string; animDelay?: number; info?: string;
 }) {
   const [hov, setHov] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
 
   const borderColor =
     alertLevel === "critical" ? "rgba(239,68,68,0.45)"
@@ -944,6 +968,8 @@ function Card({
     alertLevel === "critical" ? "#ef4444"
     : alertLevel === "warning" ? "#f59e0b"
     : accent;
+
+  const infoText = info ?? CARD_INFO[label.toLowerCase()] ?? null;
 
   return (
     <div
@@ -976,6 +1002,31 @@ function Card({
         {icon && <span style={{ color: accent, opacity: 0.7 }}>{icon}</span>}
         <span className="text-[10px] uppercase shrink-0" style={{ color: "var(--text-label)", letterSpacing: "0.12em" }}>{label}</span>
         {subtitle && <span className="text-[10px] truncate" style={{ color: "var(--text-faint)" }}>{subtitle}</span>}
+        {infoText && (
+          <span className="relative shrink-0" style={{ lineHeight: 1 }}
+            onMouseEnter={e => { e.stopPropagation(); setShowInfo(true); }}
+            onMouseLeave={() => setShowInfo(false)}
+            onClick={e => { e.stopPropagation(); setShowInfo(v => !v); }}>
+            <span style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 14, height: 14, borderRadius: 7,
+              border: "1px solid var(--border)",
+              fontSize: 8, color: "var(--text-ghost)", cursor: "help",
+              transition: "color 0.15s, border-color 0.15s",
+              ...(showInfo ? { color: accent, borderColor: accent } : {}),
+            }}>i</span>
+            {showInfo && (
+              <div style={{
+                position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)",
+                marginTop: 6, width: 220, padding: "8px 10px",
+                background: "var(--card)", border: "1px solid var(--border)",
+                borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+                fontSize: 10, lineHeight: 1.5, color: "var(--text-secondary)",
+                zIndex: 50, pointerEvents: "none",
+              }}>{infoText}</div>
+            )}
+          </span>
+        )}
         {/* live status dot, color reflects alertLevel */}
         <span className="ml-auto w-1.5 h-1.5 rounded-full shrink-0" style={{
           background: alertLevel === "critical" ? "#ef4444" : alertLevel === "warning" ? "#f59e0b" : "#10b981",
@@ -1293,6 +1344,30 @@ function SettingsPanel({ settings, onUpdate, onClose, services }: {
         </div>
 
         <div className="flex flex-col gap-2">
+          <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--settings-label)" }}>Theme</span>
+          <div className="flex gap-1.5">
+            {THEMES.map(t => {
+              const active = settings.theme === t.key;
+              return (
+                <button key={t.key} onClick={() => onUpdate({ ...settings, theme: t.key })}
+                  className="flex-1 flex flex-col items-center gap-1 py-2 rounded transition-all duration-150"
+                  style={{
+                    background: active ? "var(--settings-active-bg)" : "#161616",
+                    border: `1px solid ${active ? "var(--settings-active-border)" : "#1e1e1e"}`,
+                    cursor: "pointer", minWidth: 0,
+                  }}
+                >
+                  <div className="flex items-center justify-center" style={{ width: 18, height: 18, borderRadius: 9, background: t.bg, border: `2px solid ${t.brand}` }}>
+                    <div style={{ width: 8, height: 8, borderRadius: 4, background: t.brand }} />
+                  </div>
+                  <span style={{ fontSize: 8, color: active ? "var(--settings-active)" : "#444" }}>{t.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
           <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--settings-label)" }}>Visible Cards</span>
           {CARD_KEYS.map(c => {
             const on = settings.visibleCards[c] !== false;
@@ -1528,8 +1603,42 @@ function MikrotikTab({ mikrotikUrl }: { mikrotikUrl: string }) {
 
 // ── GrafanaCard ───────────────────────────────────────────────────────────────
 
-function GrafanaCard({ baseUrl, panelUrl }: { baseUrl: string; panelUrl: string | null }) {
+function GrafanaPanel({ url, label, height }: { url: string; label?: string; height: number }) {
   const [loaded, setLoaded] = useState(false);
+  return (
+    <div style={{ position: "relative", height }}>
+      {!loaded && (
+        <div style={{
+          position: "absolute", inset: 0, borderRadius: 8,
+          background: "var(--card-alt)",
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
+        }}>
+          <span className="text-[11px]" style={{ color: "var(--text-ghost)" }}>loading{label ? ` ${label}` : " panel"}…</span>
+        </div>
+      )}
+      <iframe
+        src={url}
+        width="100%"
+        height={height}
+        frameBorder={0}
+        style={{
+          borderRadius: 8, border: "none", display: "block",
+          opacity: loaded ? 1 : 0,
+          transition: "opacity 0.4s",
+        }}
+        onLoad={() => setLoaded(true)}
+      />
+    </div>
+  );
+}
+
+function GrafanaCard({ baseUrl, panelUrl, panels }: {
+  baseUrl: string;
+  panelUrl: string | null;
+  panels?: { panelId: string; label: string; size: "sm" | "md" | "lg"; url: string }[];
+}) {
+  const allPanels = panels && panels.length > 0 ? panels : panelUrl ? [{ panelId: "default", label: "Panel", size: "lg" as const, url: panelUrl }] : [];
+  const hasAnyPanel = allPanels.length > 0;
 
   return (
     <div style={{
@@ -1542,8 +1651,8 @@ function GrafanaCard({ baseUrl, panelUrl }: { baseUrl: string; panelUrl: string 
         <div className="flex items-center gap-2">
           <span style={{ color: "var(--accent-grafana)" }}><IconGrafana /></span>
           <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "var(--text-label)", letterSpacing: "0.15em" }}>grafana</span>
-          {panelUrl && !loaded && (
-            <span className="text-[9px]" style={{ color: "var(--text-ghost)" }}>loading…</span>
+          {hasAnyPanel && (
+            <span className="text-[9px]" style={{ color: "var(--text-ghost)" }}>{allPanels.length} panel{allPanels.length !== 1 ? "s" : ""}</span>
           )}
         </div>
         <a href={baseUrl} target="_blank" rel="noopener noreferrer"
@@ -1555,8 +1664,8 @@ function GrafanaCard({ baseUrl, panelUrl }: { baseUrl: string; panelUrl: string 
         </a>
       </div>
 
-      {/* Setup-required state when panelUrl is null (env vars not configured). */}
-      {!panelUrl ? (
+      {/* Setup-required state when no panels configured. */}
+      {!hasAnyPanel ? (
         <div style={{
           position: "relative", height: 220, borderRadius: 8,
           background: "var(--surface-dim)",
@@ -1568,33 +1677,26 @@ function GrafanaCard({ baseUrl, panelUrl }: { baseUrl: string; panelUrl: string 
             Grafana embed not configured.
           </span>
           <span className="text-[10px]" style={{ color: "var(--text-ghost)", maxWidth: 360, lineHeight: 1.5 }}>
-            Set <code style={{ color: "var(--accent-grafana)" }}>GRAFANA_DASHBOARD_UID</code> and <code style={{ color: "var(--accent-grafana)" }}>GRAFANA_DATASOURCE_UID</code> env vars to render a panel here.
+            Set <code style={{ color: "var(--accent-grafana)" }}>GRAFANA_DASHBOARD_UID</code> and <code style={{ color: "var(--accent-grafana)" }}>GRAFANA_DATASOURCE_UID</code> env vars to render a panel here. Use the <a href="/setup" style={{ color: "var(--accent-grafana)" }}>setup wizard</a> to add multiple panels.
           </span>
         </div>
+      ) : allPanels.length === 1 ? (
+        <GrafanaPanel url={allPanels[0].url} label={allPanels[0].label} height={220} />
       ) : (
-      <div style={{ position: "relative", height: 220 }}>
-        {!loaded && (
-          <div style={{
-            position: "absolute", inset: 0, borderRadius: 8,
-            background: "var(--card-alt)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <span className="text-[11px]" style={{ color: "var(--text-ghost)" }}>loading panel…</span>
-          </div>
-        )}
-        <iframe
-          src={panelUrl}
-          width="100%"
-          height="220"
-          frameBorder={0}
-          style={{
-            borderRadius: 8, border: "none", display: "block",
-            opacity: loaded ? 1 : 0,
-            transition: "opacity 0.4s",
-          }}
-          onLoad={() => setLoaded(true)}
-        />
-      </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+          {allPanels.map((p, i) => {
+            const colSpan = p.size === "lg" ? 3 : p.size === "md" ? 2 : 1;
+            const h = p.size === "lg" ? 220 : p.size === "md" ? 180 : 150;
+            return (
+              <div key={p.panelId + i} style={{ gridColumn: `span ${colSpan}` }}>
+                {allPanels.length > 1 && (
+                  <div className="text-[9px] uppercase tracking-widest mb-1" style={{ color: "var(--text-ghost)" }}>{p.label}</div>
+                )}
+                <GrafanaPanel url={p.url} label={p.label} height={h} />
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -1715,8 +1817,54 @@ function ActivityFeed({ events, loading }: { events: ActivityEvent[]; loading: b
 
 // ── dashboard ─────────────────────────────────────────────────────────────────
 
-const DEFAULT_SETTINGS: Settings = { refreshInterval: 3, tempUnit: "C", dataUnit: "decimal", visibleCards: {}, searchEngine: "google", timezone: "" };
+const DEFAULT_SETTINGS: Settings = { refreshInterval: 3, tempUnit: "C", dataUnit: "decimal", visibleCards: {}, searchEngine: "google", timezone: "", theme: "midnight" };
 const SETTINGS_KEY = "comexe:settings";
+
+// ── Demo mode ────────────────────────────────────────────────────────────
+// ?demo=1 renders the dashboard with realistic fake data so new users can
+// preview what a fully configured dashboard looks like before wiring up
+// any services.
+
+function buildDemoMetrics(): Metrics {
+  return {
+    cpu: 42.3,
+    memory: { total: 68719476736, used: null, available: 27917287424, sReclaimable: 4294967296 },
+    disks: [
+      { mountpoint: "/mnt/Pool/Media/Movies", device: "/dev/sda1", fstype: "zfs", total: 8e12, avail: 2.8e12, used: 5.2e12, usedPct: 65 },
+      { mountpoint: "/mnt/Pool/Media/TV",     device: "/dev/sdb1", fstype: "zfs", total: 8e12, avail: 4.2e12, used: 3.8e12, usedPct: 47.5 },
+      { mountpoint: "/mnt/Pool/Media/Music",  device: "/dev/sdc1", fstype: "zfs", total: 2e12, avail: 1.4e12, used: 0.6e12, usedPct: 30 },
+    ],
+    pool: { total: 18e12, used: 9.6e12, avail: 8.4e12 },
+    network: { rxBytesPerSec: 24500000, txBytesPerSec: 3200000, rxBytesTotal: 14e12, txBytesTotal: 2.1e12, interfaceName: "enp4s0" },
+    gpu: {
+      name: "NVIDIA GeForce RTX 3060", utilization: 28, memUsed: 3.2e9, memTotal: 12e9,
+      temperature: 52, powerDraw: 85, powerLimit: 170, fanSpeed: 42, coreClock: 1807, memClock: 7501,
+      encUtil: 0, decUtil: 15,
+    },
+    uptime: 1728000,
+    sysInfo: {
+      os: "TrueNAS-SCALE-24.10.2", kernel: "6.6.44-production+truenas", arch: "x86_64", hostname: "truenas",
+      cpuCores: 12, cpuModel: "AMD Ryzen 5 5600X", cpuFreqGhz: 3.7,
+      load1: 1.2, load5: 0.8, load15: 0.6, tcpEstab: 142,
+    },
+    timestamp: Date.now(),
+  };
+}
+
+function buildDemoServices(): ServiceResult[] {
+  return [
+    { name: "radarr",      up: true, configured: true, lines: ["1,247 movies (8.2 TB)", "12 missing cutoff", "2 in queue"], pct: 94, queueItems: [{ title: "Dune: Part Three", pct: 67, etaSec: 1200 }] },
+    { name: "sonarr",      up: true, configured: true, lines: ["186 series (4.1 TB)", "3 missing episodes"], pct: 98, queueItems: [{ title: "The Bear S04E08", pct: 23, etaSec: 3600 }] },
+    { name: "bazarr",      up: true, configured: true, lines: ["1,198 synced", "8 wanted"] },
+    { name: "tautulli",    up: true, configured: true, lines: ["1 stream active", "47 plays this week"], streams: [{ title: "Shogun S02E04", progress: 0.45, user: "nauman" }], weekly: { plays: 47, topShow: "Shogun", topUser: "nauman" } },
+    { name: "qbittorrent", up: true, configured: true, lines: ["2.4 ratio overall", "↓ 12.3 MB/s · ↑ 4.1 MB/s"], pct: 78, queueItems: [{ title: "ubuntu-24.04.iso", pct: 78, etaSec: 900 }, { title: "archlinux-2024.iso", pct: 34, etaSec: 2400 }] },
+    { name: "overseerr",   up: true, configured: true, lines: ["12 pending requests", "3 processing"] },
+    { name: "prowlarr",    up: true, configured: true, lines: ["8 indexers active", "23,411 grabs total"] },
+    { name: "pihole",      up: true, configured: true, lines: ["16,173 queries today", "22% blocked", "Top: ads.tracker.com"], pct: 22 },
+    { name: "nginx",       up: true, configured: true, lines: ["14 proxy hosts", "SSL certs: 14 valid"] },
+    { name: "uptimekuma",  up: true, configured: true, lines: ["24 monitors", "All up"], downCount: 0 },
+  ] as ServiceResult[];
+}
 
 export default function Dashboard() {
   const [metrics,      setMetrics]      = useState<Metrics | null>(null);
@@ -1730,6 +1878,9 @@ export default function Dashboard() {
   const [expandedCard,   setExpandedCard]   = useState<string | null>(null);
   const [showHealth,     setShowHealth]     = useState(true);
   const [showBookmarks,  setShowBookmarks]  = useState(true);
+  const [editBookmarks,  setEditBookmarks]  = useState(false);
+  const [bookmarkDraft,  setBookmarkDraft]  = useState<BookmarkColumn[] | null>(null);
+  const [bookmarkSaving, setBookmarkSaving] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [cpuHistory,     setCpuHistory]     = useState<number[]>([]);
@@ -1754,7 +1905,42 @@ export default function Dashboard() {
   const [clockDate,        setClockDate]        = useState("");
   const [clockTime,        setClockTime]        = useState("");
 
+  const demoMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1";
+
   useEffect(() => { setMounted(true); }, []);
+
+  // Demo mode — seed with fake data so users can preview the dashboard
+  useEffect(() => {
+    if (!demoMode) return;
+    setMetrics(buildDemoMetrics());
+    setLoading(false);
+    setServices(buildDemoServices());
+    setServicesLoading(false);
+    setCpuHistory([38, 41, 35, 42, 44, 39, 40, 43, 42, 38, 36, 42]);
+    setMemHistory([52, 53, 51, 54, 53, 55, 54, 52, 53, 55, 54, 53]);
+    setGpuHistory([22, 25, 28, 30, 26, 24, 28, 31, 27, 25, 28, 28]);
+    setGpuTempHistory([48, 49, 50, 51, 52, 51, 50, 52, 53, 52, 51, 52]);
+    setRxHistory([20e6, 22e6, 18e6, 24e6, 21e6, 25e6, 23e6, 24e6, 22e6, 24e6]);
+    setTxHistory([2.5e6, 3e6, 2.8e6, 3.2e6, 2.9e6, 3.5e6, 3.1e6, 3.2e6, 2.7e6, 3.2e6]);
+    setWeather({ temp: 18, condition: "Partly cloudy", forecast: [
+      { date: "2026-05-13", high: 20, low: 12, code: 2, condition: "Partly cloudy", emoji: "⛅" },
+      { date: "2026-05-14", high: 17, low: 10, code: 61, condition: "Light rain", emoji: "🌧️" },
+      { date: "2026-05-15", high: 22, low: 13, code: 0, condition: "Clear sky", emoji: "☀️" },
+    ] });
+    setSpeedtestResults([
+      { ping: 8.2, download: 450, upload: 42, created_at: new Date().toISOString(), timestamp: null, isp: "Telstra", jitter: 1.2, serverName: "Sydney", serverLocation: "Sydney, AU", serverHost: "speedtest.syd.example.com" },
+      { ping: 9.1, download: 440, upload: 40, created_at: new Date(Date.now() - 3600000).toISOString(), timestamp: null, isp: "Telstra", jitter: 1.5, serverName: "Sydney", serverLocation: "Sydney, AU", serverHost: "speedtest.syd.example.com" },
+    ]);
+    setSpeedtestLoading(false);
+    setSpeedtestHistory([430, 445, 450, 440, 455, 448, 450]);
+    setSpeedtestTotalTests(142);
+    setActivityEvents([
+      { type: "grabbed", title: "The Bear S04E08", source: "sonarr", timestamp: Date.now() - 300000, subtitle: "WEBDL-1080p" },
+      { type: "imported", title: "Dune: Part Two", source: "radarr", timestamp: Date.now() - 1200000, subtitle: "Bluray-2160p" },
+      { type: "watched", title: "Shogun S02E04", source: "tautulli", timestamp: Date.now() - 60000, subtitle: "nauman" },
+    ]);
+    setActivityLoading(false);
+  }, [demoMode]);
 
   // Persist settings to localStorage
   useEffect(() => {
@@ -1769,6 +1955,15 @@ export default function Dashboard() {
   useEffect(() => {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* quota exceeded — ignore */ }
   }, [settings]);
+
+  // Apply theme class to <html>
+  useEffect(() => {
+    const root = document.documentElement;
+    THEMES.forEach(t => root.classList.remove(`theme-${t.key}`));
+    if (settings.theme && settings.theme !== "midnight") {
+      root.classList.add(`theme-${settings.theme}`);
+    }
+  }, [settings.theme]);
 
   const fetchMetrics = useCallback(async () => {
     setRefreshing(true);
@@ -1881,31 +2076,35 @@ export default function Dashboard() {
 
   // Weather — fetch once on mount, refresh every 10 minutes
   useEffect(() => {
+    if (demoMode) return;
     fetchWeather();
     const id = setInterval(fetchWeather, 600_000);
     return () => clearInterval(id);
-  }, [fetchWeather]);
+  }, [fetchWeather, demoMode]);
 
-  // Services — refresh every 10 seconds
+  // Services — refresh every 3 seconds
   useEffect(() => {
+    if (demoMode) return;
     fetchServices();
     const id = setInterval(fetchServices, 3_000);
     return () => clearInterval(id);
-  }, [fetchServices]);
+  }, [fetchServices, demoMode]);
 
   // Speedtest — refresh every 5 minutes
   useEffect(() => {
+    if (demoMode) return;
     fetchSpeedtest();
     const id = setInterval(fetchSpeedtest, 300_000);
     return () => clearInterval(id);
-  }, [fetchSpeedtest]);
+  }, [fetchSpeedtest, demoMode]);
 
   // Activity feed — refresh every 60s (matches the route's cache TTL)
   useEffect(() => {
+    if (demoMode) return;
     fetchActivity();
     const id = setInterval(fetchActivity, 60_000);
     return () => clearInterval(id);
-  }, [fetchActivity]);
+  }, [fetchActivity, demoMode]);
 
   // Client config — fetched once on mount. Provides runtime values for the
   // bookmarks list, service URLs, mikrotik URL, and Grafana embed config so
@@ -1922,10 +2121,12 @@ export default function Dashboard() {
             const saved = localStorage.getItem(SETTINGS_KEY);
             const hasSavedEngine = saved && JSON.parse(saved).searchEngine;
             const hasSavedTz     = saved && JSON.parse(saved).timezone !== undefined;
+            const hasSavedTheme  = saved && JSON.parse(saved).theme;
             return {
               ...prev,
               searchEngine: hasSavedEngine ? prev.searchEngine : (cfg.preferences!.searchEngine as SearchEngine) || prev.searchEngine,
               timezone:     hasSavedTz     ? prev.timezone     : cfg.preferences!.timezone ?? prev.timezone,
+              theme:        hasSavedTheme  ? prev.theme        : (cfg.preferences!.theme as ThemeKey) || prev.theme,
             };
           });
         }
@@ -1933,12 +2134,24 @@ export default function Dashboard() {
       .catch(() => { /* keep clientConfig null; UI uses hardcoded fallbacks */ });
   }, []);
 
+  // First-run redirect — send to /welcome when zero services are configured
+  // and the user hasn't dismissed the welcome flow yet.
+  useEffect(() => {
+    if (demoMode) return;
+    if (!services || servicesLoading) return;
+    const configured = services.filter(s => s.configured !== false).length;
+    if (configured === 0 && !localStorage.getItem("comexe:welcome-done")) {
+      window.location.href = "/welcome";
+    }
+  }, [services, servicesLoading, demoMode]);
+
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
+    if (demoMode) return;
     fetchMetrics();
     intervalRef.current = setInterval(() => { fetchMetrics(); }, settings.refreshInterval * 1000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [fetchMetrics, settings.refreshInterval]);
+  }, [fetchMetrics, settings.refreshInterval, demoMode]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -1999,6 +2212,19 @@ export default function Dashboard() {
         <div className="fixed top-0 left-0 right-0 z-40" style={{
           height: 2, background: "var(--brand)", boxShadow: "0 0 8px rgba(6,182,212,0.5)",
         }} />
+      )}
+
+      {/* Demo mode banner */}
+      {demoMode && mounted && (
+        <div className="fixed top-0 left-0 right-0 z-50 text-center" style={{
+          background: "linear-gradient(90deg, #f59e0b, #f97316)",
+          padding: "4px 0", fontSize: 11, fontWeight: 600, color: "#0a0c12",
+          letterSpacing: "0.02em",
+        }}>
+          Demo mode — showing sample data.{" "}
+          <span style={{ textDecoration: "underline", fontWeight: 700, cursor: "pointer" }}
+            onClick={() => { window.location.href = "/"; }}>Exit demo</span>
+        </div>
       )}
 
       {/* ── sticky frosted header ── */}
@@ -2670,6 +2896,7 @@ export default function Dashboard() {
                   <GrafanaCard
                     baseUrl={clientConfig?.grafana.baseUrl ?? `http://${clientConfig?.truenasIp ?? "localhost"}:30037`}
                     panelUrl={clientConfig?.grafana.panelUrl ?? null}
+                    panels={clientConfig?.grafana.panels}
                   />
                 )}
               </div>
@@ -2897,7 +3124,16 @@ export default function Dashboard() {
                                       fontSize: 11, lineHeight: 1.5, fontVariantNumeric: "tabular-nums",
                                     }}>{animatedLine(line, `${name}-${i + 1}`)}</span>
                                   ))}
-                                  {!up && <span style={{ fontSize: 10, color: "var(--text-faint)" }}>offline</span>}
+                                  {!up && (
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                      <span style={{ fontSize: 10, color: "#ef4444" }}>offline</span>
+                                      {url && (
+                                        <span style={{ fontSize: 9, color: "var(--text-ghost)", lineHeight: 1.4 }}>
+                                          Can&apos;t reach <code style={{ fontSize: 8, color: "var(--text-dim)" }}>{url.replace(/^https?:\/\//, "")}</code> — is the container running?
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
                                 {/* Radarr: library completion + active download */}
                                 {name === "radarr" && svcPct != null && up && (
                                   <GaugeBar percent={svcPct} color={svcPct > 90 ? "#10b981" : svcPct > 70 ? "#f59e0b" : "#ef4444"} thin />
@@ -2962,27 +3198,124 @@ export default function Dashboard() {
           )}
 
           {/* ── bookmarks ── */}
-          {showBookmarks && (
-            <div className="flex flex-col gap-4" style={{ background: "var(--surface-dim)", border: "1px solid var(--border-subtle)", borderRadius: 14, padding: "20px 24px" }}>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)", letterSpacing: "0.15em" }}>bookmarks</span>
-                <span style={{ fontSize: 9, color: "var(--text-ghost)", marginLeft: "auto" }}>H to toggle</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {(clientConfig?.bookmarks ?? BOOKMARKS_FALLBACK).map(col => (
-                  <div key={col.title} className="flex flex-col gap-0.5">
-                    <div className="flex items-center gap-2 mb-2 pb-2" style={{ borderBottom: "1px solid var(--border)" }}>
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: col.accentColor }} />
-                      <span className="text-[9px] uppercase tracking-[0.18em]" style={{ color: col.accentColor, opacity: 0.8 }}>{col.title}</span>
-                    </div>
-                    {col.items.map(item => (
-                      <BookmarkItem key={item.url + item.name} {...item} />
-                    ))}
+          {showBookmarks && (() => {
+            const columns = editBookmarks && bookmarkDraft ? bookmarkDraft : (clientConfig?.bookmarks ?? BOOKMARKS_FALLBACK);
+            const updateDraft = (next: BookmarkColumn[]) => setBookmarkDraft(next);
+            const startEdit = () => { setBookmarkDraft(JSON.parse(JSON.stringify(columns))); setEditBookmarks(true); };
+            const cancelEdit = () => { setBookmarkDraft(null); setEditBookmarks(false); };
+            const saveBookmarks = async () => {
+              if (!bookmarkDraft) return;
+              setBookmarkSaving(true);
+              try {
+                const res = await fetch("/api/bookmarks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bookmarks: bookmarkDraft }) });
+                if (res.ok) {
+                  // Update client config with new bookmarks
+                  if (clientConfig) setClientConfig({ ...clientConfig, bookmarks: bookmarkDraft });
+                  setEditBookmarks(false); setBookmarkDraft(null);
+                }
+              } catch { /* ignore */ }
+              setBookmarkSaving(false);
+            };
+            const addColumn = () => { if (!bookmarkDraft) return; updateDraft([...bookmarkDraft, { title: "New Section", accentColor: "#06b6d4", items: [] }]); };
+            const removeColumn = (ci: number) => { if (!bookmarkDraft) return; updateDraft(bookmarkDraft.filter((_, i) => i !== ci)); };
+            const addItem = (ci: number) => { if (!bookmarkDraft) return; const d = [...bookmarkDraft]; d[ci] = { ...d[ci], items: [...d[ci].items, { name: "", url: "", icon: "" }] }; updateDraft(d); };
+            const removeItem = (ci: number, ii: number) => { if (!bookmarkDraft) return; const d = [...bookmarkDraft]; d[ci] = { ...d[ci], items: d[ci].items.filter((_, i) => i !== ii) }; updateDraft(d); };
+            const updateItem = (ci: number, ii: number, field: string, val: string) => {
+              if (!bookmarkDraft) return;
+              const d = [...bookmarkDraft];
+              d[ci] = { ...d[ci], items: d[ci].items.map((item, i) => i === ii ? { ...item, [field]: val } : item) };
+              updateDraft(d);
+            };
+            const updateColumn = (ci: number, field: string, val: string) => {
+              if (!bookmarkDraft) return;
+              const d = [...bookmarkDraft]; d[ci] = { ...d[ci], [field]: val }; updateDraft(d);
+            };
+            const moveItem = (ci: number, ii: number, dir: -1 | 1) => {
+              if (!bookmarkDraft) return;
+              const d = [...bookmarkDraft]; const items = [...d[ci].items];
+              const ni = ii + dir; if (ni < 0 || ni >= items.length) return;
+              [items[ii], items[ni]] = [items[ni], items[ii]];
+              d[ci] = { ...d[ci], items }; updateDraft(d);
+            };
+
+            return (
+              <div className="flex flex-col gap-4" style={{ background: "var(--surface-dim)", border: "1px solid var(--border-subtle)", borderRadius: 14, padding: "20px 24px" }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)", letterSpacing: "0.15em" }}>bookmarks</span>
+                  <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+                    {editBookmarks ? (
+                      <>
+                        <button onClick={addColumn} style={{ fontSize: 9, color: "var(--brand)", background: "none", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", cursor: "pointer" }}>+ Section</button>
+                        <button onClick={cancelEdit} style={{ fontSize: 9, color: "var(--text-dim)", background: "none", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", cursor: "pointer" }}>Cancel</button>
+                        <button onClick={saveBookmarks} disabled={bookmarkSaving} style={{ fontSize: 9, color: "#0a0c12", background: "var(--brand)", border: "none", borderRadius: 5, padding: "3px 10px", cursor: "pointer", fontWeight: 600 }}>
+                          {bookmarkSaving ? "Saving..." : "Save"}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={startEdit} style={{ fontSize: 9, color: "var(--text-dim)", background: "none", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", cursor: "pointer" }}>Edit</button>
+                        <span style={{ fontSize: 9, color: "var(--text-ghost)" }}>H to toggle</span>
+                      </>
+                    )}
                   </div>
-                ))}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {columns.map((col, ci) => (
+                    <div key={ci} className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2 mb-2 pb-2" style={{ borderBottom: "1px solid var(--border)" }}>
+                        {editBookmarks ? (
+                          <>
+                            <input type="color" value={col.accentColor} onChange={e => updateColumn(ci, "accentColor", e.target.value)}
+                              style={{ width: 16, height: 16, border: "none", background: "none", cursor: "pointer", padding: 0 }} />
+                            <input value={col.title} onChange={e => updateColumn(ci, "title", e.target.value)}
+                              className="text-[9px] uppercase tracking-[0.18em]" placeholder="Section name"
+                              style={{ background: "transparent", border: "none", borderBottom: "1px solid var(--border)", color: col.accentColor, opacity: 0.8, outline: "none", width: "100%", padding: "2px 0" }} />
+                            <button onClick={() => removeColumn(ci)} title="Remove section"
+                              style={{ color: "var(--critical)", background: "none", border: "none", cursor: "pointer", fontSize: 11, padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: col.accentColor }} />
+                            <span className="text-[9px] uppercase tracking-[0.18em]" style={{ color: col.accentColor, opacity: 0.8 }}>{col.title}</span>
+                          </>
+                        )}
+                      </div>
+                      {editBookmarks ? (
+                        <>
+                          {col.items.map((item, ii) => (
+                            <div key={ii} className="flex items-center gap-1.5 py-1" style={{ borderBottom: "1px solid var(--border-dim)" }}>
+                              <div className="flex flex-col gap-0.5" style={{ flexShrink: 0 }}>
+                                <button onClick={() => moveItem(ci, ii, -1)} disabled={ii === 0} style={{ fontSize: 8, color: ii > 0 ? "var(--text-dim)" : "var(--text-ghost)", background: "none", border: "none", cursor: ii > 0 ? "pointer" : "default", padding: 0, lineHeight: 1 }}>▲</button>
+                                <button onClick={() => moveItem(ci, ii, 1)} disabled={ii === col.items.length - 1} style={{ fontSize: 8, color: ii < col.items.length - 1 ? "var(--text-dim)" : "var(--text-ghost)", background: "none", border: "none", cursor: ii < col.items.length - 1 ? "pointer" : "default", padding: 0, lineHeight: 1 }}>▼</button>
+                              </div>
+                              <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                                <input value={item.name} onChange={e => updateItem(ci, ii, "name", e.target.value)} placeholder="Name"
+                                  style={{ fontSize: 10, background: "transparent", border: "none", borderBottom: "1px solid var(--border-dim)", color: "var(--text)", outline: "none", padding: "1px 0", width: "100%" }} />
+                                <input value={item.url} onChange={e => updateItem(ci, ii, "url", e.target.value)} placeholder="https://..."
+                                  style={{ fontSize: 9, background: "transparent", border: "none", borderBottom: "1px solid var(--border-dim)", color: "var(--text-dim)", outline: "none", padding: "1px 0", width: "100%", fontFamily: "monospace" }} />
+                                <input value={item.icon} onChange={e => updateItem(ci, ii, "icon", e.target.value)} placeholder="Icon URL (or leave blank for auto)"
+                                  style={{ fontSize: 9, background: "transparent", border: "none", borderBottom: "1px solid var(--border-dim)", color: "var(--text-dim)", outline: "none", padding: "1px 0", width: "100%", fontFamily: "monospace" }} />
+                              </div>
+                              <button onClick={() => removeItem(ci, ii)} title="Remove" style={{ color: "var(--critical)", background: "none", border: "none", cursor: "pointer", fontSize: 10, padding: "0 2px", flexShrink: 0 }}>×</button>
+                            </div>
+                          ))}
+                          <button onClick={() => addItem(ci)}
+                            style={{ fontSize: 9, color: "var(--brand)", background: "none", border: "1px dashed var(--border)", borderRadius: 5, padding: "4px 8px", cursor: "pointer", marginTop: 4, textAlign: "center" }}>
+                            + Add bookmark
+                          </button>
+                        </>
+                      ) : (
+                        col.items.map(item => (
+                          <BookmarkItem key={item.url + item.name} {...item} />
+                        ))
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* ── footer ── */}
           <div className="flex items-center justify-between flex-wrap gap-3" style={{ borderTop: "1px solid var(--border-dim)", paddingTop: 12 }}>
