@@ -7,39 +7,23 @@ opening a terminal past `docker run`.
 
 ---
 
-## Tier 1 — quick wins (a few hours each)
+## Tier 1 — quick wins ✅ shipped
 
-### Search engine picker
-Currently hard-coded to Google. Convert `GoogleSearch` → generic `SearchBar` with
-an engine setting. Options: **Google · Bing · DuckDuckGo · Kagi** (4 covers most
-homelab folks). Persist choice via `data/config.json` like everything else.
+### ✅ Search engine picker
+Shipped in `73173d8`. `GoogleSearch` → generic `SearchBar` with per-engine SVG
+icons. Options: **Google · Bing · DuckDuckGo · Kagi**. Persisted via
+localStorage + server config (`preferences.searchEngine`). Configurable in both
+Settings panel and `/setup` wizard.
 
-- Touches: `app/page.tsx` (`GoogleSearch` component), `app/lib/server-config.ts`,
-  `/setup` wizard (new dropdown row in a new "Preferences" section).
-- No backend work — search just opens `https://<engine>/search?q=…` in a new tab.
+### ✅ Timezone setting
+Shipped in `73173d8`. Header clock uses `Intl.DateTimeFormat` with an IANA
+timezone. ~30 major timezones in the selector, "" = browser local. Persisted
+same as search engine (`preferences.timezone`).
 
-### Timezone / location for the clock
-The header clock uses the browser's local time, which is wrong for VPN users
-and people viewing on phones in a different timezone than the homelab. Add a
-timezone setting (`Intl.supportedValuesOf("timeZone")` gives the full list).
-
-- Touches: `app/page.tsx` (clock `useEffect`), `/setup` (timezone select),
-  config.json.
-- Optionally: a small "Location" text field that drives both the clock label
-  ("Launceston · 14:23") *and* the weather coords (so changing location updates
-  both at once instead of three separate fields).
-
-### Multi-day weather forecast
-Right now the header pill shows *current* conditions only (open-meteo, no key).
-Add a small "next 3 days" forecast — high/low per day with an icon — either as
-a hover-over on the existing pill or as its own card.
-
-- open-meteo already returns `daily.temperature_2m_max/min` + `weather_code`,
-  so no new API. Just extend `app/api/weather/route.ts` and add UI.
-- **Note:** your roadmap says "add weather API" — confirming you mean the
-  forecast extension, not switching providers? open-meteo is already free + no
-  key. If you actually want OpenWeatherMap as an option (paid keys, more
-  features), that's a Tier 2 change.
+### ✅ 3-day weather forecast
+Shipped in `73173d8`. Weather pill now shows a hover popup with the next 3 days
+— emoji, condition, high/low. Uses open-meteo `daily` endpoint (no new API, no
+key). `ForecastDay` type exported from weather route.
 
 ---
 
@@ -129,12 +113,10 @@ Cross-cutting theme tying everything above together. Concrete asks:
 
 ## Sequencing recommendation
 
-If we're picking up Monday, suggested order:
+Tier 1 is done. Suggested order for the remaining work:
 
-1. **Search engine picker** + **timezone setting** — both small, both touch
-   the same Preferences area of `/setup`. One PR, half a day.
-2. **Multi-day forecast** — extends an existing route, low risk.
-3. **CSS-variable refactor** as a standalone commit — no functional change,
+1. ~~Search engine picker + timezone + forecast~~ — **done.**
+2. **CSS-variable refactor** as a standalone commit — no functional change,
    prepares the ground for themes. Has to land before themes can ship.
 4. **5 themes + theme picker UI** — sits on top of (3).
 5. **Welcome flow** — once themes exist, wire them into the first-run wizard.
