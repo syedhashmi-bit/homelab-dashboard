@@ -44,6 +44,9 @@ export interface ClientConfig {
   // True when COMEXE_DOCKER_ENABLED=1. The dashboard renders restart/logs
   // buttons on service cards when this is on.
   dockerEnabled?:  boolean;
+  // True when GRAFANA_API_TOKEN is set. Tells the GrafanaCard to use the
+  // server-side /render proxy instead of an iframe.
+  grafanaTokenSet?: boolean;
 }
 
 export async function GET() {
@@ -104,6 +107,7 @@ export async function GET() {
     writableReason: writableProbe.ok ? undefined : writableProbe.reason,
     writablePath:   writableProbe.ok ? undefined : writableProbe.path,
     dockerEnabled: process.env.COMEXE_DOCKER_ENABLED === "1" || process.env.COMEXE_DOCKER_ENABLED === "true",
+    grafanaTokenSet: !!process.env.GRAFANA_API_TOKEN?.trim(),
   };
 
   return NextResponse.json(response);

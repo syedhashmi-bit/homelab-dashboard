@@ -1195,6 +1195,7 @@ export default function Dashboard() {
                     baseUrl={clientConfig?.grafana.baseUrl ?? `http://${clientConfig?.truenasIp ?? "localhost"}:30037`}
                     panelUrl={clientConfig?.grafana.panelUrl ?? null}
                     panels={clientConfig?.grafana.panels}
+                    tokenSet={clientConfig?.grafanaTokenSet}
                   />
                 )}
               </div>

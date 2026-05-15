@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconGrafana } from "@/app/components/icons";
 
 interface ProbeResult {
@@ -10,23 +10,65 @@ interface ProbeResult {
   hint?:  string;
 }
 
-function GrafanaPanel({ url, label, height, baseUrl }: { url: string; label?: string; height: number; baseUrl: string }) {
+function GrafanaPanel({ url, label, height, baseUrl, tokenSet }: { url: string; label?: string; height: number; baseUrl: string; tokenSet?: boolean }) {
   const [loaded, setLoaded] = useState(false);
   const [probe,  setProbe]  = useState<ProbeResult | null>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(800);
+
+  // When using server-side render, the <img> width should match the container
+  // so we don't ship an oversized PNG. ResizeObserver keeps it in sync.
+  useEffect(() => {
+    if (!tokenSet || !containerRef.current) return;
+    const ro = new ResizeObserver(entries => {
+      for (const e of entries) setWidth(Math.round(e.contentRect.width));
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [tokenSet]);
 
   // Server-side probe — iframes can't tell us if Grafana returned auth error
-  // or a real panel, so we ask our own backend to fetch the URL and inspect it.
+  // or a real panel, so we ask our own backend to fetch the URL and inspect
+  // it. Skip when we're going to use the render proxy (it has its own check).
   useEffect(() => {
+    if (tokenSet) return;
     let cancelled = false;
     fetch(`/api/grafana/test?url=${encodeURIComponent(url)}`)
       .then(r => r.json())
       .then((p: ProbeResult) => { if (!cancelled) setProbe(p); })
       .catch(() => { if (!cancelled) setProbe({ ok: false, status: 0, reason: "unreachable", hint: "Probe failed" }); });
     return () => { cancelled = true; };
-  }, [url]);
+  }, [url, tokenSet]);
 
   if (probe && !probe.ok) {
     return <GrafanaFallback height={height} probe={probe} baseUrl={baseUrl} panelUrl={url} />;
+  }
+
+  // Token path — server-side proxy returns a PNG, we render as <img>. Refresh
+  // every 60s via cache-busting query param so the panel stays live.
+  if (tokenSet) {
+    return (
+      <div ref={containerRef} style={{ position: "relative", height, borderRadius: 8, overflow: "hidden" }}>
+        {!loaded && !renderError && (
+          <div style={{
+            position: "absolute", inset: 0, background: "var(--card-alt)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 11, color: "var(--text-ghost)",
+          }}>rendering{label ? ` ${label}` : " panel"}…</div>
+        )}
+        {renderError ? (
+          <GrafanaFallback
+            height={height}
+            probe={{ ok: false, status: 502, reason: "unreachable", hint: renderError }}
+            baseUrl={baseUrl}
+            panelUrl={url}
+          />
+        ) : (
+          <RefreshingImg url={url} width={width} height={height} onLoaded={() => setLoaded(true)} onError={setRenderError} />
+        )}
+      </div>
+    );
   }
 
   return (
@@ -53,6 +95,43 @@ function GrafanaPanel({ url, label, height, baseUrl }: { url: string; label?: st
         onLoad={() => setLoaded(true)}
       />
     </div>
+  );
+}
+
+// Cache-busting refresh every 60s. onError fires when the proxy returns a
+// non-200 (renderer plugin missing, bad token, etc.) — we surface that via
+// the GrafanaFallback path.
+function RefreshingImg({ url, width, height, onLoaded, onError }: {
+  url: string; width: number; height: number;
+  onLoaded: () => void; onError: (msg: string) => void;
+}) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const src = `/api/grafana/render?url=${encodeURIComponent(url)}&width=${width}&height=${height}&t=${tick}`;
+  return (
+    <img
+      src={src}
+      width="100%"
+      height={height}
+      style={{ display: "block", width: "100%", height, objectFit: "contain" }}
+      onLoad={onLoaded}
+      onError={async () => {
+        // Re-fetch to read the JSON error body
+        try {
+          const r = await fetch(src);
+          if (!r.ok) {
+            const body = await r.json().catch(() => null);
+            onError(body?.error ?? `Render proxy returned HTTP ${r.status}`);
+          }
+        } catch (e) {
+          onError((e as Error).message);
+        }
+      }}
+    />
   );
 }
 
@@ -132,10 +211,11 @@ GF_SECURITY_ALLOW_EMBEDDING=true`}</pre>
   );
 }
 
-export function GrafanaCard({ baseUrl, panelUrl, panels }: {
+export function GrafanaCard({ baseUrl, panelUrl, panels, tokenSet }: {
   baseUrl: string;
   panelUrl: string | null;
   panels?: { panelId: string; label: string; size: "sm" | "md" | "lg"; url: string }[];
+  tokenSet?: boolean;
 }) {
   const allPanels = panels && panels.length > 0 ? panels : panelUrl ? [{ panelId: "default", label: "Panel", size: "lg" as const, url: panelUrl }] : [];
   const hasAnyPanel = allPanels.length > 0;
@@ -179,7 +259,7 @@ export function GrafanaCard({ baseUrl, panelUrl, panels }: {
           </span>
         </div>
       ) : allPanels.length === 1 ? (
-        <GrafanaPanel url={allPanels[0].url} label={allPanels[0].label} height={220} baseUrl={baseUrl} />
+        <GrafanaPanel url={allPanels[0].url} label={allPanels[0].label} height={220} baseUrl={baseUrl} tokenSet={tokenSet} />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
           {allPanels.map((p, i) => {
@@ -190,7 +270,7 @@ export function GrafanaCard({ baseUrl, panelUrl, panels }: {
                 {allPanels.length > 1 && (
                   <div className="text-[9px] uppercase tracking-widest mb-1" style={{ color: "var(--text-ghost)" }}>{p.label}</div>
                 )}
-                <GrafanaPanel url={p.url} label={p.label} height={h} baseUrl={baseUrl} />
+                <GrafanaPanel url={p.url} label={p.label} height={h} baseUrl={baseUrl} tokenSet={tokenSet} />
               </div>
             );
           })}
