@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { Settings, ServiceResult, SearchEngine, TempUnit, DataUnit } from "@/app/lib/types";
 import { THEMES, TIMEZONES } from "@/app/lib/constants";
 import { SearchEngineIcon } from "@/app/components/SearchBar";
-import { resetCardOrder } from "@/app/lib/card-order";
+import { loadCardOrder, resetCardOrder, saveCardOrder } from "@/app/lib/card-order";
 import { CustomCardEditor } from "@/app/components/CustomCardEditor";
 
 export const CARD_KEYS = ["cpu", "memory", "filesystems", "network", "gpu", "speedtest", "system", "grafana", "services", "activity"] as const;
@@ -25,8 +25,8 @@ export function SettingsPanel({ settings, onUpdate, onClose, services }: {
     <>
       <div className="fixed inset-0 z-40" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onClose} />
       <div
-        className="fixed top-0 right-0 h-full z-50 flex flex-col gap-5 p-6 overflow-y-auto"
-        style={{ width: 272, background: "var(--settings-bg)", borderLeft: "1px solid var(--settings-border)", boxShadow: "-12px 0 40px rgba(0,0,0,0.7)" }}
+        className="fixed top-0 right-0 h-full z-50 flex flex-col gap-5 p-4 sm:p-6 overflow-y-auto w-full sm:w-[272px]"
+        style={{ maxWidth: 320, background: "var(--settings-bg)", borderLeft: "1px solid var(--settings-border)", boxShadow: "-12px 0 40px rgba(0,0,0,0.7)" }}
       >
         <div className="flex items-center justify-between mb-1">
           <span className="text-[10px] tracking-widest uppercase" style={{ color: "var(--settings-text)" }}>Settings</span>
@@ -227,7 +227,9 @@ export function SettingsPanel({ settings, onUpdate, onClose, services }: {
           </div>
         )}
 
+        <LayoutPresetsSection settings={settings} onUpdate={onUpdate} />
         <AlertsSection />
+        <BackupSection />
 
         <div style={{ height: 1, background: "var(--settings-input)", marginTop: "auto" }} />
         <span className="text-[9px] text-center" style={{ color: "var(--settings-input-border)" }}>resets on page reload</span>
@@ -451,6 +453,176 @@ function AlertsSection() {
             <div style={{ fontSize: 9, color: "var(--critical)", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 4, padding: "4px 8px" }}>{error}</div>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+// ── LayoutPresetsSection ────────────────────────────────────────────────────
+const LAYOUTS_KEY = "comexe:layouts";
+
+interface LayoutPreset {
+  name: string;
+  visibleCards: Record<string, boolean>;
+  cardOrder: string[];
+}
+
+function LayoutPresetsSection({ settings, onUpdate }: { settings: Settings; onUpdate: (s: Settings) => void }) {
+  const [presets, setPresets] = useState<LayoutPreset[]>([]);
+  const [newName, setNewName] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(LAYOUTS_KEY);
+      if (saved) setPresets(JSON.parse(saved));
+    } catch { /* ignore */ }
+  }, []);
+
+  function persist(next: LayoutPreset[]) {
+    setPresets(next);
+    try { localStorage.setItem(LAYOUTS_KEY, JSON.stringify(next)); } catch { /* quota */ }
+  }
+
+  function saveLayout() {
+    const name = newName.trim();
+    if (!name) return;
+    const preset: LayoutPreset = {
+      name,
+      visibleCards: { ...settings.visibleCards },
+      cardOrder: loadCardOrder(),
+    };
+    const next = presets.filter(p => p.name !== name).concat(preset);
+    persist(next);
+    setNewName("");
+  }
+
+  function loadLayout(preset: LayoutPreset) {
+    onUpdate({ ...settings, visibleCards: { ...preset.visibleCards } });
+    saveCardOrder(preset.cardOrder);
+  }
+
+  function deleteLayout(name: string) {
+    persist(presets.filter(p => p.name !== name));
+    setConfirmDelete(null);
+  }
+
+  const btnStyle: React.CSSProperties = {
+    fontSize: 9, padding: "3px 8px", borderRadius: 4,
+    background: "var(--settings-input)", color: "var(--settings-text)",
+    border: "1px solid var(--settings-input-border)", cursor: "pointer",
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--settings-label)" }}>Layout Presets</span>
+
+      {presets.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {presets.map(p => (
+            <div key={p.name} className="flex items-center gap-2">
+              <button onClick={() => loadLayout(p)} style={{ ...btnStyle, flex: 1, textAlign: "left" }}
+                title="Load this layout">
+                {p.name}
+              </button>
+              {confirmDelete === p.name ? (
+                <>
+                  <button onClick={() => deleteLayout(p.name)}
+                    style={{ ...btnStyle, color: "var(--critical)", borderColor: "rgba(239,68,68,0.3)" }}>Yes</button>
+                  <button onClick={() => setConfirmDelete(null)} style={btnStyle}>No</button>
+                </>
+              ) : (
+                <button onClick={() => setConfirmDelete(p.name)}
+                  style={{ ...btnStyle, color: "var(--settings-label)", fontSize: 11, padding: "2px 6px" }}
+                  title="Delete preset">&times;</button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-1.5">
+        <input
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") saveLayout(); }}
+          placeholder="Preset name…"
+          style={{
+            flex: 1, fontSize: 10, background: "var(--settings-input)", color: "var(--settings-text)",
+            border: "1px solid var(--settings-input-border)", borderRadius: 4, padding: "4px 8px",
+            outline: "none",
+          }}
+        />
+        <button onClick={saveLayout} disabled={!newName.trim()} style={{ ...btnStyle, opacity: newName.trim() ? 1 : 0.4 }}>
+          Save
+        </button>
+      </div>
+
+      {presets.length === 0 && (
+        <span style={{ fontSize: 9, color: "var(--settings-label)" }}>
+          Save the current card visibility + order as a named preset.
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ── BackupSection ───────────────────────────────────────────────────────────
+function BackupSection() {
+  const [importing, setImporting] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function exportBackup() {
+    try {
+      const res = await fetch("/api/backup");
+      if (!res.ok) { setMsg({ ok: false, text: `Export failed (HTTP ${res.status})` }); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `comexe-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMsg({ ok: true, text: "Exported" });
+    } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
+  }
+
+  async function importBackup(file: File) {
+    setImporting(true); setMsg(null);
+    try {
+      const text = await file.text();
+      const body = JSON.parse(text);
+      const res = await fetch("/api/backup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      setMsg({ ok: !!data.ok, text: data.message ?? (data.ok ? "Imported" : "Failed") });
+      if (data.ok) setTimeout(() => window.location.reload(), 1500);
+    } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
+    setImporting(false);
+  }
+
+  const btnStyle: React.CSSProperties = {
+    fontSize: 9, padding: "4px 10px", borderRadius: 4,
+    background: "var(--settings-input)", color: "var(--settings-text)",
+    border: "1px solid var(--settings-input-border)", cursor: "pointer",
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--settings-label)" }}>Backup</span>
+      <div className="flex gap-2">
+        <button onClick={exportBackup} style={btnStyle}>Export config</button>
+        <label style={{ ...btnStyle, display: "inline-flex", alignItems: "center", gap: 4, cursor: importing ? "wait" : "pointer", opacity: importing ? 0.6 : 1 }}>
+          {importing ? "Importing…" : "Import"}
+          <input type="file" accept=".json" style={{ display: "none" }} disabled={importing}
+            onChange={e => { const f = e.target.files?.[0]; if (f) importBackup(f); e.target.value = ""; }} />
+        </label>
+      </div>
+      {msg && (
+        <div style={{ fontSize: 9, color: msg.ok ? "var(--ok)" : "var(--critical)", padding: "2px 0" }}>{msg.text}</div>
       )}
     </div>
   );

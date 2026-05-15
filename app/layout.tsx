@@ -19,6 +19,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "ComExe · live",
   description: "ComExe — homelab metrics dashboard",
+  viewport: "width=device-width, initial-scale=1, maximum-scale=1",
 };
 
 // Inline script that applies the saved theme class before React hydrates,

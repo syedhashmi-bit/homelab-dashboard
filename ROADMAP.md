@@ -265,6 +265,148 @@ by default. Run via `npm run storybook` (port 6006).
 
 ---
 
+## Tier 6 — production polish ✅ shipped
+
+### ✅ Mobile/tablet responsive layout
+Shipped. Custom `xs: 480px` breakpoint in Tailwind config. Header collapses
+pill elements at mobile widths. Services grid adapts from 5-col down to 1-col.
+Main content padding tightens on small screens. Settings panel goes full-width
+on mobile. `viewport` meta tag prevents zoom-bounce.
+
+### ✅ Decompose page.tsx into feature components
+Shipped. Extracted ~430 lines from page.tsx into standalone components:
+
+- **`ServicesPanel.tsx`** — service card grid with category headers, filter,
+  health pills, queue progress, stream progress, Docker actions (logs/restart).
+  Moved `SVC_COLORS`, `SVC_ICONS`, `SVC_LABELS`, `SVC_CATEGORIES`,
+  `buildSvcUrls` into the component file.
+- **`BookmarksPanel.tsx`** — bookmarks grid with inline editing, section
+  management, save/cancel, read-only install warning. All bookmark state
+  (draft, saving, error) is now self-contained.
+
+page.tsx went from ~1650 lines to ~1230 lines.
+
+### ✅ SSE live updates (replace polling)
+Shipped. New `/api/stream` SSE endpoint pushes metrics, services, mikrotik,
+activity, speedtest, and weather data at configurable intervals. Single
+persistent connection replaces 6 independent pollers. 30s heartbeat keeps
+the connection alive.
+
+Client-side `useEventStream` hook in `app/hooks/useEventStream.ts`:
+- Automatic reconnect with exponential backoff (3 retries)
+- Falls back to traditional polling if SSE unavailable
+- Named events dispatched to the appropriate state setters
+- Interval overrides from settings passed as query params
+
+### ✅ Import/export config backup
+Shipped. New `/api/backup` endpoint:
+
+- **GET** — exports `config.json`, `custom-cards.json`, `alerts.json`, and
+  `bookmarks.json` as a single JSON bundle with metadata.
+- **POST** — imports a backup bundle, restoring all files. Auto-reloads the
+  page on success.
+
+UI in Settings panel → Backup section: "Export config" button downloads the
+bundle, "Import" button opens a file picker and restores.
+
+### ✅ Offline PWA shell
+Shipped. Service worker (`public/sw.js`) with three strategies:
+
+- **Navigation**: network-first, falls back to cached shell when offline
+- **Static assets** (`/_next/static/`, icons, SVGs): stale-while-revalidate
+- **API calls**: always network (never cached — stale metrics are worse than
+  no metrics)
+
+Offline banner appears when `navigator.onLine` goes false, showing
+"You are offline — showing cached data." The banner auto-dismisses when
+connectivity returns.
+
+---
+
+## Tier 7 — analytics & UX polish ✅ shipped
+
+### ✅ Historical analytics page
+Shipped. Full `/analytics` route with interactive SVG area charts for all
+6 core metrics (CPU, Memory, GPU, Disk, Network RX, Network TX). Time range
+selector (1h / 6h / 24h / 7d) fetches from `/api/history`. Summary cards
+show current, avg, and max values. Back link to dashboard.
+
+Custom `AreaChart` component — interactive SVG with hover crosshair, gradient
+fill, Y-axis labels, X-axis time labels. No chart library.
+
+### ✅ Keyboard shortcuts overlay
+Shipped. Press `?` anywhere to toggle a centered modal listing all shortcuts:
+R (refresh), G (search), H (bookmarks), / (service filter), Esc (close),
+? (this overlay), Ctrl+K (command palette). Modal renders via
+`KeyboardShortcuts` component with `onClose` prop.
+
+### ✅ Notification center
+Shipped. Slide-out panel triggered from the alert pill in the header. Fetches
+from `/api/alerts` history endpoint. Displays alert events with colored dots
+(critical = red, warning = amber), relative timestamps, event keys. Rendered
+via `NotificationCenter` component.
+
+### ✅ Header sparklines
+Shipped. Tiny inline CPU/MEM/NET sparklines in the sticky header bar, visible
+on `lg:` breakpoint and above. `MiniSpark` sub-component renders SVG polyline
+from the last 20 data points. `HeaderSparklines` component receives history
+arrays as props.
+
+### ✅ System uptime timeline
+Shipped. Visual horizontal bar showing uptime/downtime segments inside the
+System card. Green bar = up, red segments = down periods. Shows uptime
+percentage (e.g. 99.97%), outage count, and time range. Built from a
+session-level `uptimeHistory` array that records each poll result.
+
+---
+
+## Tier 8 — power features ✅ shipped
+
+### ✅ Command palette (Ctrl+K)
+Shipped. `Ctrl+K` opens a centered search modal listing all dashboard actions
+grouped by section (Actions, Panels, Navigate). Arrow keys navigate, Enter
+selects, Esc closes. Fuzzy-filters by label, section, or ID. Actions include:
+refresh metrics, focus search, toggle bookmarks, open settings, keyboard
+shortcuts, notifications, network topology, server fleet, analytics,
+setup wizard, open TrueNAS, open Prometheus.
+
+### ✅ Dashboard layout presets
+Shipped. Settings → Layout Presets section. Save the current card visibility
++ card order as a named preset. Load a preset to restore both. Delete presets
+with confirm. Persisted in `localStorage` key `comexe:layouts`. Works
+alongside the existing "Reset card layout" button.
+
+### ✅ Disk health SMART monitoring
+Shipped. New `/api/smart` route queries Prometheus for `smartmon_*` metrics:
+temperature, power-on hours, reallocated sectors, pending sectors,
+uncorrectable sectors, device health. Renders a `DiskHealthPanel` component
+below the metric grid showing per-disk status cards with colored indicators.
+Falls back gracefully when smartmon exporter is not present.
+
+### ✅ Network topology map
+Shipped. New `/api/topology` route fetches ARP table + DHCP leases from
+MikroTik REST API. `NetworkTopology` component renders an interactive SVG
+visualization with:
+- Router node at center top, connected to all devices
+- Device icons differ by type (router / server / device)
+- Hover highlights individual device and dims others
+- Active/inactive status via green dot + dashed/solid lines
+- Legend at bottom
+- Accessible via command palette → "Network topology"
+
+### ✅ Multi-server support
+Shipped. New `/api/servers` route with full CRUD (GET/POST/PATCH/DELETE)
+backed by `data/servers.json`. Each entry has a name + Prometheus URL. GET
+queries all servers in parallel for CPU, memory, and uptime via standard
+`node_exporter` PromQL. `ServerFleetPanel` component shows:
+- Add/remove servers with name + Prometheus URL
+- Enable/disable toggle per server
+- Live CPU + memory mini-bars + uptime display
+- Online/offline status indicator
+- Accessible via command palette → "Server fleet"
+
+---
+
 ## Sequencing (completed)
 
 All tiers shipped. Full build order:
@@ -277,3 +419,118 @@ All tiers shipped. Full build order:
   PWA manifest, update banner
 **Tier 5** — Auth/HTTPS, arm64, historical persistence, custom card builder,
   automated tests, Storybook
+**Tier 6** — Responsive layout, page.tsx decomposition, SSE live updates,
+  config backup/restore, offline PWA shell
+**Tier 7** — Analytics page, keyboard shortcuts, notification center,
+  header sparklines, uptime timeline
+**Tier 8** — Command palette, layout presets, SMART monitoring, network
+  topology map, multi-server support
+
+---
+
+## Tier 9 — observability & insights (planned)
+
+### Log aggregation viewer
+Centralized log viewer pulling from Docker container logs, syslog, and
+journal. Full-text search with regex, severity filtering (debug → critical),
+timestamp range picker. Tail mode streams new lines via SSE. Syntax
+highlighting for JSON log lines. Accessible from each service card's
+context menu as "View logs → aggregated".
+
+### Anomaly detection & predictive alerts
+ML-lite anomaly detection on historical metrics: compute rolling mean + stddev
+over 7d and flag data points >3σ. Surface anomalies on the analytics page as
+highlighted regions. Predictive disk-full alert: linear extrapolation on
+`disk_pct` trend → "Pool will be full in ~14 days" warning. CPU/memory
+baseline profiles per time-of-day to distinguish "Tuesday 2am backup spike"
+from genuine overload.
+
+### SLA & uptime reports
+Monthly/weekly uptime reports generated from `history.jsonl`. Per-service
+availability percentage, incident timeline, MTTR (mean time to recover),
+longest outage. Exportable as PDF or Markdown. Email digest option via
+webhook (compose the report server-side, POST to a mail relay or ntfy).
+
+### Resource forecasting dashboard
+Dedicated `/forecast` page. Takes 30d of historical data and projects
+storage consumption, memory pressure, and network bandwidth growth.
+Visualized as dashed trend lines extending past the current data on the
+area charts. Configurable confidence intervals (68% / 95%).
+
+### Dependency health map
+Service-to-service dependency graph — e.g. Sonarr depends on Prowlarr and
+qBittorrent. If a dependency goes down, highlight the upstream impact chain.
+Config stored in `data/dependencies.json` with a visual editor. Overlay on
+the existing services panel: "Prowlarr down → Sonarr/Radarr search degraded."
+
+---
+
+## Tier 10 — platform & ecosystem (planned)
+
+### Plugin system
+Extension API for third-party dashboard cards. Plugins are single `.js`
+bundles loaded from `data/plugins/` at runtime. Each plugin exports a React
+component + a manifest (`name`, `icon`, `defaultSize`, `refreshInterval`,
+`configSchema`). Plugin marketplace page listing community-contributed cards
+(fetched from a GitHub repo index). Sandboxed via iframe with postMessage
+bridge for metric access.
+
+### Mobile companion app (React Native)
+Lightweight mobile app that connects to the ComExe instance via its API.
+Push notifications via Firebase/APNs (replaces browser notifications for
+mobile). Glanceable widget showing CPU/MEM/GPU at-a-glance. Biometric
+auth (Face ID / fingerprint) for the dashboard password flow.
+
+### Prometheus recording rules generator
+Analyze the user's PromQL usage patterns from custom cards + built-in
+queries. Suggest Prometheus recording rules that would pre-compute expensive
+queries. One-click export as a `rules.yml` snippet the user can drop into
+their Prometheus config. Reduces query latency and Prometheus CPU load for
+heavy dashboards.
+
+### Multi-user with roles
+Upgrade from single shared password to per-user accounts. Roles: **admin**
+(full access, settings, Docker control), **operator** (view + restart
+services, acknowledge alerts), **viewer** (read-only dashboard). User
+management page in settings. Backed by `data/users.json` with bcrypt-hashed
+passwords. Session tokens in signed cookies.
+
+### Webhook integrations marketplace
+Pre-built webhook templates beyond Discord/Slack/ntfy: PagerDuty, Opsgenie,
+Telegram, Pushover, Email (SMTP), Microsoft Teams, Gotify, Matrix.
+Each template has a config form (API key, channel, priority mapping) and
+a "Send test" button. Community-contributed templates loaded from a
+registry.
+
+### Container orchestration dashboard
+Expand Docker control into a mini-Portainer: list all containers (not just
+monitored services), show resource usage per container (CPU/mem/net from
+Docker stats API), bulk actions (stop/start/restart/pull), compose file
+viewer, image cleanup (dangling images, unused volumes). Behind the
+existing `ENABLE_DOCKER_CONTROL` opt-in.
+
+---
+
+## Tier 11 — advanced networking (planned)
+
+### Bandwidth monitoring per client
+Per-IP traffic accounting from MikroTik `/queue/simple` or firewall
+mangle rules. Historical bandwidth usage per device with daily/weekly
+rollups. Top talkers leaderboard. Alert when a device exceeds a
+configurable bandwidth threshold.
+
+### VPN status panel
+Monitor WireGuard / OpenVPN tunnels via MikroTik REST API or Prometheus
+`wireguard_*` metrics. Show connected peers, handshake age, transfer
+stats, endpoint IPs. Alert on tunnel down or handshake stale >5min.
+
+### Firewall rule viewer
+Read-only view of MikroTik firewall filter/nat/mangle rules. Highlight
+active rules (packet counters >0 in last hour). Search/filter by chain,
+action, comment. Useful for debugging connectivity issues without opening
+Winbox.
+
+### DNS analytics
+PiHole query log visualization: top queried domains, top blocked domains,
+query volume over time, per-client breakdown. Complements the existing
+PiHole card stats with a dedicated drilldown view.
