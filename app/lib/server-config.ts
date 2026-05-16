@@ -103,7 +103,7 @@ const MANIFEST: ServiceManifest[] = [
   { name: "bazarr",      defaultPort: 30046, envUrl: "BAZARR_URL",      authShape: "apikey",   envApiKey:   "BAZARR_API_KEY" },
   { name: "tautulli",    defaultPort: 30047, envUrl: "TAUTULLI_URL",    authShape: "apikey",   envApiKey:   "TAUTULLI_API_KEY" },
   { name: "qbittorrent", defaultPort: 30024, envUrl: "QBIT_URL",        authShape: "userpass", envUsername: "QBIT_USERNAME", envPassword: "QBIT_PASSWORD" },
-  { name: "overseerr",   defaultPort: 30002, envUrl: "OVERSEERR_URL",   authShape: "apikey",   envApiKey:   "OVERSEERR_API_KEY" },
+  { name: "overseerr",   defaultPort: 30357, envUrl: "OVERSEERR_URL",   authShape: "apikey",   envApiKey:   "OVERSEERR_API_KEY" },
   { name: "pihole",      defaultPort: 20720, envUrl: "PIHOLE_URL",      authShape: "password", envPassword: "PIHOLE_PASSWORD" },
   { name: "prowlarr",    defaultPort: 30050, envUrl: "PROWLARR_URL",    authShape: "apikey",   envApiKey:   "PROWLARR_API_KEY" },
   { name: "nginx",       defaultPort: 30020, envUrl: "NGINX_URL",       authShape: "userpass", envUsername: "NGINX_USERNAME", envPassword: "NGINX_PASSWORD" },

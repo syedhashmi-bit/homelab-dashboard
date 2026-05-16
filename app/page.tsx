@@ -37,7 +37,6 @@ import { MikrotikTab } from "@/app/components/MikrotikTab";
 import { GrafanaCard } from "@/app/components/GrafanaCard";
 import { ActivityFeed } from "@/app/components/ActivityFeed";
 import { DraggableCard } from "@/app/components/DraggableCard";
-import { DevicesPanel } from "@/app/components/DevicesPanel";
 import { ContainerLogsSheet } from "@/app/components/ContainerLogsSheet";
 import { CustomCardsGrid } from "@/app/components/CustomCards";
 import { CustomCardEditor } from "@/app/components/CustomCardEditor";
@@ -782,8 +781,6 @@ export default function Dashboard() {
 
           <SearchBar inputRef={searchInputRef} engine={settings.searchEngine} />
           <MikrotikTab mikrotikUrl={clientConfig?.mikrotikUrl ?? "http://192.168.88.1"} refreshSec={settings.refreshOverrides?.mikrotik} />
-          {!demoMode && <DevicesPanel />}
-
           {offline && (
             <div className="flex items-center gap-2" style={{
               background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)",

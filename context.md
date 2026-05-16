@@ -52,7 +52,7 @@ Open-Meteo coords: `lat=-41.4419, lon=147.1450`.
 | Tautulli | `30047` | `$TAUTULLI_API_KEY` |
 | Prowlarr | `30050` | `$PROWLARR_API_KEY` |
 | qBittorrent | `30024` | `$QBIT_USERNAME` / `$QBIT_PASSWORD` (cookie SID auth) |
-| Overseerr | `30002` | `$OVERSEERR_API_KEY` |
+| Overseerr | `30357` | `$OVERSEERR_API_KEY` |
 | Plex | `32400` | not currently read by dashboard (Tautulli covers Plex sessions) |
 
 ## Network / infra — `192.168.88.196`
