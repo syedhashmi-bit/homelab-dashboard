@@ -131,7 +131,7 @@ export function ServicesPanel({
                       return 4;
                     };
                     return tier(a) - tier(b);
-                  }).map(({ name, up, lines, pct: svcPct, downCount, queueItems, streams: svcStreams, health, stale, staleSince }) => {
+                  }).map(({ name, up, lines, pct: svcPct, downCount, queueItems, streams: svcStreams, health, stale, staleSince, authError }) => {
                     const color = SVC_COLORS[name] ?? "#666";
                     const icon  = SVC_ICONS[name]  ?? "";
                     const label = SVC_LABELS[name]  ?? name;
@@ -210,6 +210,14 @@ export function ServicesPanel({
                                     fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em",
                                   }}>STALE</span>
                               )}
+                              {authError && (
+                                <span title="Service is up but the API key was rejected (HTTP 401/403). Update the env var in update-dashboard.sh and redeploy."
+                                  style={{
+                                    background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.4)",
+                                    color: "#ef4444", borderRadius: 4, padding: "1px 5px",
+                                    fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em",
+                                  }}>AUTH</span>
+                              )}
                               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{
                                 background: stale ? "#f59e0b" : up ? "#10b981" : "#ef4444",
                                 boxShadow: stale ? "0 0 6px #f59e0baa" : up ? "0 0 6px #10b981aa" : "0 0 4px #ef444455",
@@ -235,6 +243,14 @@ export function ServicesPanel({
                                   Can&apos;t reach <code style={{ fontSize: 8, color: "var(--text-dim)" }}>{resolvedUrl.replace(/^https?:\/\//, "")}</code> — is the container running?
                                 </span>
                               )}
+                            </div>
+                          )}
+                          {up && authError && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                              <span style={{ fontSize: 10, color: "#ef4444" }}>API key rejected</span>
+                              <span style={{ fontSize: 9, color: "var(--text-ghost)", lineHeight: 1.4 }}>
+                                Service is reachable but returned <code style={{ fontSize: 8, color: "var(--text-dim)" }}>401</code>. Check the env var on TrueNAS.
+                              </span>
                             </div>
                           )}
                           {name === "radarr" && svcPct != null && up && (

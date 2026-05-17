@@ -26,6 +26,7 @@ interface ServiceResult {
   weekly?:     WeeklyStats;
   stale?:      boolean;                // true ⇒ this is cached data from a previous successful poll
   staleSince?: number;                 // timestamp of the last successful fetch when stale=true
+  authError?:  boolean;                // true ⇒ service is reachable but API key is wrong (401/403)
 }
 
 // Helper: build a "needs configuration" placeholder result.
@@ -84,12 +85,20 @@ function fmtEta(sec: number | null | undefined): string | null {
   return `${Math.round(sec / 86400)}d`;
 }
 
+// Custom error class so callers can distinguish auth failures (401/403) from
+// other HTTP errors and network errors. Auth failures surface as a clearer
+// "API key" message rather than a generic "container down" hint.
+class AuthError extends Error {
+  constructor(public status: number) { super(`Auth failed: HTTP ${status}`); }
+}
+
 async function apiFetch(url: string, headers?: Record<string, string>): Promise<unknown> {
   const res = await fetch(url, {
     headers: { Accept: "application/json", ...headers },
     signal: AbortSignal.timeout(8000),
     next: { revalidate: 0 },
   });
+  if (res.status === 401 || res.status === 403) throw new AuthError(res.status);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -228,9 +237,10 @@ async function radarr(creds: ServiceCreds): Promise<ServiceResult> {
       queueItems: queueItems.length > 0 ? queueItems : undefined,
       health:     summarizeHealth(healthData),
     };
-  } catch {
+  } catch (e) {
+    const isAuth = e instanceof AuthError;
     const up = await checkReachable(BASE);
-    return { name: "radarr", up, configured: true, url: BASE, lines: up ? ["—"] : [] };
+    return { name: "radarr", up: up || isAuth, configured: true, url: BASE, authError: isAuth, lines: isAuth ? ["check api key"] : up ? ["—"] : [] };
   }
 }
 
@@ -285,9 +295,10 @@ async function sonarr(creds: ServiceCreds): Promise<ServiceResult> {
       queueItems: queueItems.length > 0 ? queueItems : undefined,
       health:     summarizeHealth(healthData),
     };
-  } catch {
+  } catch (e) {
+    const isAuth = e instanceof AuthError;
     const up = await checkReachable(BASE);
-    return { name: "sonarr", up, configured: true, url: BASE, lines: up ? ["—"] : [] };
+    return { name: "sonarr", up: up || isAuth, configured: true, url: BASE, authError: isAuth, lines: isAuth ? ["check api key"] : up ? ["—"] : [] };
   }
 }
 
@@ -311,9 +322,10 @@ async function bazarr(creds: ServiceCreds): Promise<ServiceResult> {
     const epMissing = epData.total ?? 0;
     const mvMissing = mvData.total ?? 0;
     return { name: "bazarr", up: true, configured: true, url: BASE_URL, lines: [`${epMissing} missing ep subs · ${mvMissing} missing movie subs`] };
-  } catch {
+  } catch (e) {
+    const isAuth = e instanceof AuthError;
     const up = await checkReachable(BASE_URL);
-    return { name: "bazarr", up, configured: true, url: BASE_URL, lines: up ? ["—"] : [] };
+    return { name: "bazarr", up: up || isAuth, configured: true, url: BASE_URL, authError: isAuth, lines: isAuth ? ["check api key"] : up ? ["—"] : [] };
   }
 }
 
@@ -495,9 +507,10 @@ async function qbittorrent(creds: ServiceCreds): Promise<ServiceResult> {
       queueItem:  queueItems[0] ?? null,
       queueItems: queueItems.length > 0 ? queueItems : undefined,
     };
-  } catch {
+  } catch (e) {
+    const isAuth = e instanceof AuthError;
     const up = await checkReachable(`${BASE}/api/v2/app/version`);
-    return { name: "qbittorrent", up, configured: true, url: BASE, lines: up ? ["—"] : [] };
+    return { name: "qbittorrent", up: up || isAuth, configured: true, url: BASE, authError: isAuth, lines: isAuth ? ["check user/pass"] : up ? ["—"] : [] };
   }
 }
 
@@ -525,9 +538,10 @@ async function overseerr(creds: ServiceCreds): Promise<ServiceResult> {
     const lines = [`${pending} pending · ${approved} approved`];
     if (available > 0) lines.push(`${available} available`);
     return { name: "overseerr", up: true, configured: true, url: creds.url, lines };
-  } catch {
+  } catch (e) {
+    const isAuth = e instanceof AuthError;
     const up = await checkReachable(creds.url);
-    return { name: "overseerr", up, configured: true, url: creds.url, lines: up ? ["—"] : [] };
+    return { name: "overseerr", up: up || isAuth, configured: true, url: creds.url, authError: isAuth, lines: isAuth ? ["check api key"] : up ? ["—"] : [] };
   }
 }
 
@@ -641,9 +655,10 @@ async function prowlarr(creds: ServiceCreds): Promise<ServiceResult> {
       lines: [`${indexers.length} indexers · ${grabs} grabs · ${queries} queries`],
       health: summarizeHealth(healthData),
     };
-  } catch {
+  } catch (e) {
+    const isAuth = e instanceof AuthError;
     const up = await checkReachable(BASE);
-    return { name: "prowlarr", up, configured: true, url: BASE, lines: up ? ["—"] : [] };
+    return { name: "prowlarr", up: up || isAuth, configured: true, url: BASE, authError: isAuth, lines: isAuth ? ["check api key"] : up ? ["—"] : [] };
   }
 }
 

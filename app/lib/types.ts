@@ -122,6 +122,7 @@ export interface ServiceResult {
   weekly?:     ServiceWeekly;
   stale?:      boolean;          // true => cached data from a previous good poll (server-side last-known-good fallback)
   staleSince?: number;           // ms epoch of the last successful fetch when stale=true
+  authError?:  boolean;          // true => service responded with 401/403 (wrong/missing API key)
 }
 
 export interface ActivityEvent {
