@@ -20,7 +20,7 @@ interface ActivityEvent {
   timestamp: number;      // unix ms
 }
 
-const CACHE_TTL  = 60_000;
+const CACHE_TTL  = 120_000; // 2 min — activity feed is informational, not real-time critical
 const MAX_EVENTS = 30;
 
 let activityCache: { data: { events: ActivityEvent[]; timestamp: number }; ts: number } | null = null;

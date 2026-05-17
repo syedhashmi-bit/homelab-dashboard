@@ -34,12 +34,11 @@ function unconfigured(name: string, envVar: string[]): ServiceResult {
 }
 
 let servicesCache: { data: { services: ServiceResult[]; timestamp: number }; ts: number } | null = null;
-// Generous cache so even an aggressive client poll cycle (or multiple browser
-// tabs sharing the SSE stream) doesn't generate a flood of upstream API
-// calls. 12s means each of the 10 services gets hit at most ~5×/minute total,
-// not 20×/minute. Crucial when the homelab is resource-constrained — the
-// dashboard's own polling was contributing to *arr container instability.
-const CACHE_TTL = 12_000;
+// 30s — combined with per-endpoint memoization of heavy library calls
+// (5 min) and slow-changing enrichment (3 min), each upstream service
+// now sees ~2-3 light requests/minute from this dashboard instead of
+// the original 30+ calls/minute that was crashing *arr containers.
+const CACHE_TTL = 30_000;
 
 // Per-service last-known-good results. If a service was up in the last
 // STALE_WINDOW_MS but a fresh poll fails, we surface the cached good result
@@ -87,6 +86,34 @@ async function apiFetch(url: string, headers?: Record<string, string>): Promise<
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
+}
+
+// Long-lived memoize for "library" data that barely changes minute-to-minute
+// (e.g. radarr's full /movie list, sonarr's /series list, cutoff/health probes).
+// These are the heaviest calls in the services route — caching them for several
+// minutes means each upstream gets hit a handful of times per hour instead of
+// hundreds, which is the difference between "homelab stable" and "*arr crash".
+const memoCache = new Map<string, { value: unknown; ts: number }>();
+async function apiFetchMemo<T>(key: string, ttlMs: number, fetcher: () => Promise<T>): Promise<T> {
+  const cached = memoCache.get(key);
+  if (cached && Date.now() - cached.ts < ttlMs) return cached.value as T;
+  const value = await fetcher();
+  memoCache.set(key, { value, ts: Date.now() });
+  return value;
+}
+// Forgiving memo variant — caches null values too so a failing endpoint
+// doesn't get re-probed every cycle.
+async function apiFetchMemoOpt<T>(key: string, ttlMs: number, fetcher: () => Promise<T | null>): Promise<T | null> {
+  const cached = memoCache.get(key);
+  if (cached && Date.now() - cached.ts < ttlMs) return cached.value as T | null;
+  try {
+    const value = await fetcher();
+    memoCache.set(key, { value, ts: Date.now() });
+    return value;
+  } catch {
+    memoCache.set(key, { value: null, ts: Date.now() });
+    return null;
+  }
 }
 
 // Forgiving variant — returns null on any error instead of throwing.
@@ -139,15 +166,24 @@ async function radarr(creds: ServiceCreds): Promise<ServiceResult> {
   const KEY  = creds.apiKey ?? "";
   const BASE = creds.url;
   try {
-    // Primary call (movies) is required. The rest are enrichment — failures don't sink the card.
-    const moviesData = await apiFetch(`${BASE}/api/v3/movie?apiKey=${KEY}`) as RadarrMovie[];
+    // Movies list = whole library, memoized 5 min. Library size changes
+    // hourly at best — fetching it every 15s burned hundreds of req/hour.
+    // Cutoff + health also memoized (3 min) since they're slow-changing.
+    // Only the queue endpoint is fetched fresh every poll (active downloads).
+    const moviesData = await apiFetchMemo(`radarr:movies:${BASE}`, 300_000, () =>
+      apiFetch(`${BASE}/api/v3/movie?apiKey=${KEY}`) as Promise<RadarrMovie[]>
+    );
     const [queueData, cutoffData, healthData] = await Promise.all([
       apiFetchOpt(`${BASE}/api/v3/queue?apiKey=${KEY}&pageSize=3&sortKey=timeleft&includeUnknownMovieItems=false`) as Promise<{
         totalRecords: number;
         records: ArrQueueRecord[];
       } | null>,
-      apiFetchOpt(`${BASE}/api/v3/wanted/cutoff?apiKey=${KEY}&pageSize=1`) as Promise<{ totalRecords?: number } | null>,
-      apiFetchOpt(`${BASE}/api/v3/health?apiKey=${KEY}`) as Promise<ArrHealthRecord[] | null>,
+      apiFetchMemoOpt(`radarr:cutoff:${BASE}`, 300_000, () =>
+        apiFetchOpt(`${BASE}/api/v3/wanted/cutoff?apiKey=${KEY}&pageSize=1`) as Promise<{ totalRecords?: number } | null>
+      ),
+      apiFetchMemoOpt(`radarr:health:${BASE}`, 180_000, () =>
+        apiFetchOpt(`${BASE}/api/v3/health?apiKey=${KEY}`) as Promise<ArrHealthRecord[] | null>
+      ),
     ]);
     const total       = moviesData.length;
     const missing     = moviesData.filter(m => !m.hasFile && m.monitored).length;
@@ -187,18 +223,25 @@ async function sonarr(creds: ServiceCreds): Promise<ServiceResult> {
   const KEY  = creds.apiKey ?? "";
   const BASE = creds.url;
   try {
-    // Series request must succeed; rest are enrichment.
-    const seriesData = await apiFetch(
-      `${BASE}/api/v3/series?apiKey=${KEY}&includeSeasonImages=false`
-    ) as SonarrSeries[];
+    // Series list is the heaviest call (whole library). Memoized 5 min.
+    // missing/cutoff/health also memoized — only the queue is fetched fresh.
+    const seriesData = await apiFetchMemo(`sonarr:series:${BASE}`, 300_000, () =>
+      apiFetch(`${BASE}/api/v3/series?apiKey=${KEY}&includeSeasonImages=false`) as Promise<SonarrSeries[]>
+    );
     const [wantedData, queueData, cutoffData, healthData] = await Promise.all([
-      apiFetchOpt(`${BASE}/api/v3/wanted/missing?apiKey=${KEY}&pageSize=1`) as Promise<{ totalRecords?: number } | null>,
+      apiFetchMemoOpt(`sonarr:missing:${BASE}`, 180_000, () =>
+        apiFetchOpt(`${BASE}/api/v3/wanted/missing?apiKey=${KEY}&pageSize=1`) as Promise<{ totalRecords?: number } | null>
+      ),
       apiFetchOpt(`${BASE}/api/v3/queue?apiKey=${KEY}&pageSize=3&sortKey=timeleft&includeUnknownSeriesItems=false`) as Promise<{
         totalRecords: number;
         records: ArrQueueRecord[];
       } | null>,
-      apiFetchOpt(`${BASE}/api/v3/wanted/cutoff?apiKey=${KEY}&pageSize=1`) as Promise<{ totalRecords?: number } | null>,
-      apiFetchOpt(`${BASE}/api/v3/health?apiKey=${KEY}`) as Promise<ArrHealthRecord[] | null>,
+      apiFetchMemoOpt(`sonarr:cutoff:${BASE}`, 300_000, () =>
+        apiFetchOpt(`${BASE}/api/v3/wanted/cutoff?apiKey=${KEY}&pageSize=1`) as Promise<{ totalRecords?: number } | null>
+      ),
+      apiFetchMemoOpt(`sonarr:health:${BASE}`, 180_000, () =>
+        apiFetchOpt(`${BASE}/api/v3/health?apiKey=${KEY}`) as Promise<ArrHealthRecord[] | null>
+      ),
     ]);
     const total       = seriesData.length;
     const sizeBytes   = seriesData.reduce((s, x) => s + (x.statistics?.sizeOnDisk ?? 0), 0);
@@ -235,9 +278,15 @@ async function bazarr(creds: ServiceCreds): Promise<ServiceResult> {
   const HEADERS = { "X-API-KEY": KEY };
 
   try {
+    // Missing-subs counts barely change minute-to-minute; memoize 3 min so
+    // Bazarr (notoriously CPU-heavy under polling) doesn't get hammered.
     const [epData, mvData] = await Promise.all([
-      apiFetch(`${BASE_URL}/api/episodes/wanted?start=0&length=1`, HEADERS) as Promise<{ total?: number }>,
-      apiFetch(`${BASE_URL}/api/movies/wanted?start=0&length=1`, HEADERS) as Promise<{ total?: number }>,
+      apiFetchMemo(`bazarr:eps:${BASE_URL}`, 180_000, () =>
+        apiFetch(`${BASE_URL}/api/episodes/wanted?start=0&length=1`, HEADERS) as Promise<{ total?: number }>
+      ),
+      apiFetchMemo(`bazarr:movies:${BASE_URL}`, 180_000, () =>
+        apiFetch(`${BASE_URL}/api/movies/wanted?start=0&length=1`, HEADERS) as Promise<{ total?: number }>
+      ),
     ]);
     const epMissing = epData.total ?? 0;
     const mvMissing = mvData.total ?? 0;
@@ -436,10 +485,19 @@ async function overseerr(creds: ServiceCreds): Promise<ServiceResult> {
   if (!creds.configured) return unconfigured("overseerr", creds.envVar ?? ["OVERSEERR_API_KEY"]);
   const KEY = creds.apiKey ?? "";
   try {
+    // Overseerr request counts change when users submit/approve — minutes,
+    // not seconds. Memoize 3 min so we're hitting it ~20×/hour total, not
+    // 60+ calls/hour across 3 endpoints from a 15s poll cycle.
     const [pendingData, approvedData, availableData] = await Promise.all([
-      apiFetch(`${creds.url}/api/v1/request?take=1&skip=0&filter=pending`,   { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
-      apiFetch(`${creds.url}/api/v1/request?take=1&skip=0&filter=approved`,  { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
-      apiFetch(`${creds.url}/api/v1/request?take=1&skip=0&filter=available`, { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>,
+      apiFetchMemo(`overseerr:pending:${creds.url}`, 180_000, () =>
+        apiFetch(`${creds.url}/api/v1/request?take=1&skip=0&filter=pending`,   { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>
+      ),
+      apiFetchMemo(`overseerr:approved:${creds.url}`, 180_000, () =>
+        apiFetch(`${creds.url}/api/v1/request?take=1&skip=0&filter=approved`,  { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>
+      ),
+      apiFetchMemo(`overseerr:available:${creds.url}`, 180_000, () =>
+        apiFetch(`${creds.url}/api/v1/request?take=1&skip=0&filter=available`, { "X-Api-Key": KEY }) as Promise<{ pageInfo: { results: number } }>
+      ),
     ]);
     const pending   = pendingData.pageInfo?.results ?? 0;
     const approved  = approvedData.pageInfo?.results ?? 0;
@@ -542,11 +600,18 @@ async function prowlarr(creds: ServiceCreds): Promise<ServiceResult> {
   const KEY  = creds.apiKey ?? "";
   const BASE = creds.url;
   try {
+    // Prowlarr is fragile under polling load — this is what was crashing on
+    // TrueNAS. indexerstats is a heavy SQL aggregation; cache 5 min. Health
+    // is cached 3 min. Per-poll cost on prowlarr now near zero.
     const [stats, healthData] = await Promise.all([
-      apiFetch(`${BASE}/api/v1/indexerstats?apikey=${KEY}`) as Promise<{
-        indexers?: { numberOfGrabs?: number; numberOfQueries?: number }[];
-      }>,
-      apiFetchOpt(`${BASE}/api/v1/health?apikey=${KEY}`) as Promise<ArrHealthRecord[] | null>,
+      apiFetchMemo(`prowlarr:stats:${BASE}`, 300_000, () =>
+        apiFetch(`${BASE}/api/v1/indexerstats?apikey=${KEY}`) as Promise<{
+          indexers?: { numberOfGrabs?: number; numberOfQueries?: number }[];
+        }>
+      ),
+      apiFetchMemoOpt(`prowlarr:health:${BASE}`, 180_000, () =>
+        apiFetchOpt(`${BASE}/api/v1/health?apikey=${KEY}`) as Promise<ArrHealthRecord[] | null>
+      ),
     ]);
     const indexers = stats.indexers ?? [];
     const grabs    = indexers.reduce((s, i) => s + (i.numberOfGrabs   ?? 0), 0);

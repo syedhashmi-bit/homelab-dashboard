@@ -34,7 +34,7 @@ export function SettingsPanel({ settings, onUpdate, onClose, services }: {
         </div>
 
         {[
-          { title: "Refresh", options: [5, 10, 15, 30], key: "refreshInterval" as const, fmt: (v: number) => `${v}s` },
+          { title: "Refresh", options: [10, 15, 30, 60], key: "refreshInterval" as const, fmt: (v: number) => `${v}s` },
         ].map(({ title, options, key, fmt }) => (
           <div key={key} className="flex flex-col gap-2">
             <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--settings-label)" }}>{title}</span>

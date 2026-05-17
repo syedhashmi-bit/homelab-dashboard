@@ -59,7 +59,7 @@ import { useEventStream } from "@/app/hooks/useEventStream";
 const MAX_HISTORY = 60;
 
 
-const DEFAULT_SETTINGS: Settings = { refreshInterval: 5, tempUnit: "C", dataUnit: "decimal", visibleCards: {}, searchEngine: "google", timezone: "", theme: "midnight" };
+const DEFAULT_SETTINGS: Settings = { refreshInterval: 10, tempUnit: "C", dataUnit: "decimal", visibleCards: {}, searchEngine: "google", timezone: "", theme: "midnight" };
 const SETTINGS_KEY = "comexe:settings";
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
@@ -396,7 +396,7 @@ export default function Dashboard() {
   useEffect(() => { if (demoMode || !usePolling) return; fetchWeather(); const id = setInterval(fetchWeather, 600_000); return () => clearInterval(id); }, [fetchWeather, demoMode, usePolling]);
   useEffect(() => {
     if (demoMode || !usePolling) return;
-    const sec = settings.refreshOverrides?.services || 15;
+    const sec = settings.refreshOverrides?.services || 30;
     fetchServices();
     const id = setInterval(fetchServices, sec * 1000);
     return () => clearInterval(id);

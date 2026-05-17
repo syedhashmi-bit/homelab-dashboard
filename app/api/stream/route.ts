@@ -3,16 +3,17 @@ import { NextRequest } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Much more conservative defaults than the original 3s — the *arr stack +
-// PiHole + qBit don't change rapidly enough to justify hammering them every
-// 3 seconds, and the aggregate request rate was contributing to upstream
-// container instability on resource-constrained hosts.
+// Conservative defaults — the *arr stack + PiHole + qBit don't change
+// rapidly enough to justify aggressive polling, and the aggregate request
+// rate was crashing upstream containers on this user's TrueNAS setup.
+// Combined with per-endpoint memoization in the services route, each
+// upstream now sees minimal load.
 const DEFAULT_INTERVALS: Record<string, number> = {
-  metrics:   5000,
-  services:  15000,
-  mikrotik:  10000,
-  activity:  60000,
-  speedtest: 300000,
+  metrics:   10000,
+  services:  30000,
+  mikrotik:  15000,
+  activity:  120000,
+  speedtest: 600000,
   weather:   600000,
 };
 
@@ -20,11 +21,11 @@ const DEFAULT_INTERVALS: Record<string, number> = {
 // flood the homelab. These are the absolute minimums; the defaults above
 // are what new installs see.
 const MIN_INTERVALS: Record<string, number> = {
-  metrics:   3000,
-  services:  10000,
-  mikrotik:  5000,
-  activity:  30000,
-  speedtest: 60000,
+  metrics:   5000,
+  services:  20000,
+  mikrotik:  10000,
+  activity:  60000,
+  speedtest: 120000,
   weather:   60000,
 };
 

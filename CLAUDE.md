@@ -117,15 +117,19 @@ All UI components live in this one file. Categories:
 
 | Endpoint | Interval |
 |----------|----------|
-| `/api/metrics` | `settings.refreshInterval`s (default 5s, options 5/10/15/30) |
-| `/api/services` | 15s |
-| `/api/mikrotik` | 10s |
-| `/api/activity` | 60s |
-| `/api/speedtest` | 300s |
+| `/api/metrics` | `settings.refreshInterval`s (default 10s, options 10/15/30/60) |
+| `/api/services` | 30s |
+| `/api/mikrotik` | 15s |
+| `/api/activity` | 120s |
+| `/api/speedtest` | 600s |
 | `/api/weather` | 600s |
 | Clock | 1s |
 
-**Throttling philosophy:** the original 3s polling generated ~20 upstream API calls/sec which contributed to *arr container instability on resource-constrained hosts. New defaults are deliberately slow — services (cards rarely change rapidly) at 15s, mikrotik at 10s, metrics at 5s. Server-side cache TTLs match: services 12s, mikrotik 9s, metrics 4.5s. Users can override per-endpoint in Settings → Polling intervals, but each endpoint has a hard floor (services ≥10s, metrics ≥3s, mikrotik ≥5s) enforced in the SSE route to prevent accidental flooding. The services route also stages its 10 upstream fetches in 2 batches of 5 with a 250ms gap to avoid a thundering herd. Per-service last-known-good cache (60s window) keeps cards populated across brief failures, flagged `stale: true`.
+**Throttling philosophy:** the original 3s polling generated ~20 upstream API calls/sec which was crashing *arr containers and PiHole/Prowlarr on this user's TrueNAS. Now deliberately slow: services 30s, mikrotik 15s, metrics 10s. Server-side cache TTLs match (services 30s, mikrotik 9s, metrics 9s). Hard floors on user overrides (services ≥20s, metrics ≥5s, mikrotik ≥10s) prevent accidental flooding.
+
+**Per-endpoint memoization** in the services route is the real load-killer: heavy library calls (`radarr/movies`, `sonarr/series`) cached 5 min; enrichment (cutoff, health, missing, indexerstats, overseerr counts, bazarr counts) cached 3-5 min. Only genuinely real-time data (queue items, active streams, qBit dl speeds) is fetched fresh on every 30s services poll. Net effect: each upstream service sees ~150 calls/hour instead of the original 1800+/hour — a 12× reduction.
+
+Services route stages its 10 upstream fetches in 2 batches of 5 with a 250ms gap to avoid a thundering herd. Per-service last-known-good cache (60s window) keeps cards populated across brief failures, flagged `stale: true`.
 
 ### Components — what to know
 
