@@ -95,7 +95,7 @@ class AuthError extends Error {
 async function apiFetch(url: string, headers?: Record<string, string>): Promise<unknown> {
   const res = await fetch(url, {
     headers: { Accept: "application/json", ...headers },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(6000),
     next: { revalidate: 0 },
   });
   if (res.status === 401 || res.status === 403) throw new AuthError(res.status);
@@ -156,15 +156,32 @@ async function apiFetchOpt(url: string, headers?: Record<string, string>): Promi
   }
 }
 
-// Returns true if the server at baseUrl responds to any HTTP request (even 4xx/5xx)
-// Generous timeout (6s) — when the homelab is under load, services may take a while
-// to respond to even an unauthed base-URL probe.
+// Returns true if the server at baseUrl responds to any HTTP request (even 4xx/5xx).
+// Uses HEAD to keep the probe lightweight — falls back to GET if the server
+// doesn't support HEAD. 4s timeout: long enough for a slow homelab, short
+// enough that 10 of these in a cold-start storm don't pile up to 60s.
 async function checkReachable(baseUrl: string): Promise<boolean> {
   try {
-    await fetch(baseUrl, { signal: AbortSignal.timeout(6000), next: { revalidate: 0 } });
+    const res = await fetch(baseUrl, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(4000),
+      next: { revalidate: 0 },
+    });
+    // Any HTTP response (even 4xx/5xx) means the server is alive. 405 means
+    // HEAD isn't supported but the server itself responded.
+    if (res.status < 500 || res.status === 405) return true;
     return true;
   } catch {
-    return false;
+    // HEAD failed — try a cheap GET in case the server rejected HEAD entirely.
+    try {
+      await fetch(baseUrl, {
+        signal: AbortSignal.timeout(3000),
+        next: { revalidate: 0 },
+      });
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -462,7 +479,7 @@ async function qbittorrent(creds: ServiceCreds): Promise<ServiceResult> {
         "Referer": BASE,
       },
       body: new URLSearchParams({ username: USER, password: PASS }).toString(),
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(6000),
       next: { revalidate: 0 },
     });
     const setCookie = loginRes.headers.get("set-cookie");
@@ -471,7 +488,7 @@ async function qbittorrent(creds: ServiceCreds): Promise<ServiceResult> {
 
     const torrentsRes = await fetch(`${BASE}/api/v2/torrents/info`, {
       headers: { "Cookie": `SID=${sid}`, "Referer": BASE },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(6000),
       next: { revalidate: 0 },
     });
     if (!torrentsRes.ok) throw new Error(`torrents HTTP ${torrentsRes.status}`);
@@ -557,7 +574,7 @@ async function pihole(creds: ServiceCreds): Promise<ServiceResult> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password: PASSWORD }),
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(6000),
     });
     const authData = await authRes.json() as { session?: { sid?: string; validity?: number } };
     const sid = authData?.session?.sid;
@@ -573,7 +590,7 @@ async function pihole(creds: ServiceCreds): Promise<ServiceResult> {
     try {
       const r = await fetch(`${BASE}${path}`, {
         headers: { sid },
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(6000),
       });
       if (!r.ok) return null;
       return await r.json() as T;
@@ -584,7 +601,7 @@ async function pihole(creds: ServiceCreds): Promise<ServiceResult> {
     const sid = await getSid();
     const statsRes = await fetch(`${BASE}/api/stats/summary`, {
       headers: { sid },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(6000),
     });
     if (!statsRes.ok) throw new Error(`stats HTTP ${statsRes.status}`);
     const stats = await statsRes.json() as {
@@ -724,7 +741,7 @@ async function nginxProxy(creds: ServiceCreds): Promise<ServiceResult> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ identity: USER, secret: PASS }),
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(6000),
       next: { revalidate: 0 },
     });
     if (!tokenRes.ok) throw new Error("auth");
@@ -796,6 +813,32 @@ async function refreshServicesCache(): Promise<void> {
   servicesCache = { data, ts: Date.now() };
 }
 
+// Warm the cache on module load (container startup) so the very first user
+// request doesn't pay the full ~16s cold-start cost. Fire-and-forget; the
+// background refresh will populate `servicesCache` and `lastGoodResults`.
+// Subsequent GETs hit SWR and respond instantly.
+if (typeof window === "undefined") {
+  // Small delay so we don't compete with Next.js's own startup work.
+  setTimeout(() => {
+    refreshServicesCache().catch(() => { /* upstream may be down at boot */ });
+  }, 500);
+}
+
+// Skeleton placeholder used while the first real fetch is still in flight.
+// 10 cards in a loading state — the UI shows the chrome and a skeleton row
+// instead of blocking on a ~16s cold-start service fetch. The next poll or
+// SSE event (within seconds) will replace this with real data.
+function buildLoadingPlaceholder() {
+  const names = ["radarr","sonarr","bazarr","tautulli","qbittorrent","overseerr","pihole","prowlarr","nginx","uptimekuma"];
+  return {
+    services: names.map(name => ({
+      name, up: true, configured: true, lines: ["loading…"],
+    })),
+    timestamp: Date.now(),
+    loading: true,
+  };
+}
+
 export async function GET() {
   const now = Date.now();
 
@@ -817,11 +860,13 @@ export async function GET() {
     }
   }
 
-  // Cold start (no cache) or cache older than SWR window — must do the work
-  // inline since we have nothing to serve.
-  pruneMemoCache();
-  const cfg = await loadConfig();
-  const data = await fetchAllServicesData(cfg);
-  servicesCache = { data, ts: Date.now() };
-  return NextResponse.json(data);
+  // Cold start with no cache at all — return a loading placeholder
+  // immediately so the UI renders fast, and kick off a real fetch in the
+  // background. The next poll (3-30s later) will see populated data.
+  if (!backgroundRefresh) {
+    backgroundRefresh = refreshServicesCache()
+      .catch(() => { /* ignore */ })
+      .finally(() => { backgroundRefresh = null; });
+  }
+  return NextResponse.json(buildLoadingPlaceholder());
 }
