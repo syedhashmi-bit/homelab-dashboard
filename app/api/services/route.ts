@@ -96,6 +96,15 @@ class AuthError extends Error {
   constructor(public status: number) { super(`Auth failed: HTTP ${status}`); }
 }
 
+// Thrown when an upstream returns 5xx but the body is a structured error
+// object (e.g. Servarr apps returning {message, description} on a SQLite
+// failure). Callers can inspect `.body.message` to show a useful message.
+class UpstreamServerError extends Error {
+  constructor(public status: number, public body: { message?: string; description?: string }) {
+    super(`HTTP ${status}: ${body.message ?? "upstream error"}`);
+  }
+}
+
 async function apiFetch(url: string, headers?: Record<string, string>): Promise<unknown> {
   const res = await fetch(url, {
     headers: { Accept: "application/json", ...headers },
@@ -103,7 +112,23 @@ async function apiFetch(url: string, headers?: Record<string, string>): Promise<
     next: { revalidate: 0 },
   });
   if (res.status === 401 || res.status === 403) throw new AuthError(res.status);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    // On 5xx, try to read the body — Servarr / linuxserver apps return
+    // a structured {message, description} on internal errors. Surfacing
+    // the message in the UI is much more useful than "HTTP 500".
+    if (res.status >= 500 && res.status < 600) {
+      try {
+        const body = await res.json() as { message?: string; description?: string };
+        if (body && typeof body.message === "string") {
+          throw new UpstreamServerError(res.status, body);
+        }
+      } catch (e) {
+        if (e instanceof UpstreamServerError) throw e;
+        // body was not JSON — fall through to the generic error
+      }
+    }
+    throw new Error(`HTTP ${res.status}`);
+  }
   return res.json();
 }
 
@@ -471,36 +496,42 @@ const QBIT_DL_STATES   = new Set(["downloading","forcedDL","stalledDL","metaDL",
 const QBIT_SEED_STATES = new Set(["uploading","forcedUP","stalledUP","queuedUP","checkingUP"]);
 
 async function qbittorrent(creds: ServiceCreds): Promise<ServiceResult> {
-  if (!creds.configured) return unconfigured("qbittorrent", creds.envVar ?? ["QBIT_USERNAME", "QBIT_PASSWORD"]);
+  if (!creds.configured) return unconfigured("qbittorrent", creds.envVar ?? ["QBIT_API_KEY", "QBIT_USERNAME", "QBIT_PASSWORD"]);
   const BASE = creds.url;
   const USER = creds.username ?? "";
   const PASS = creds.password ?? "";
+  const KEY  = creds.apiKey  ?? "";
   try {
-    const loginRes = await fetch(`${BASE}/api/v2/auth/login`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Referer": BASE,
-      },
-      body: new URLSearchParams({ username: USER, password: PASS }).toString(),
-      signal: AbortSignal.timeout(6000),
-      next: { revalidate: 0 },
-    });
-    if (loginRes.status === 401 || loginRes.status === 403) throw new AuthError(loginRes.status);
-    const setCookie = loginRes.headers.get("set-cookie");
-    const sid = setCookie?.match(/SID=([^;]+)/)?.[1];
-    // Two-path auth handling:
-    //  - Normal case: login succeeds → SID cookie → send with subsequent calls.
-    //  - "Bypass authentication for localhost" enabled in qBit's WebUI settings:
-    //    login returns 200 OK with body "Ok." but NO SID cookie. Subsequent
-    //    calls without auth are accepted by qBit anyway. We support this by
-    //    proceeding without the SID header.
-    const cookieHeader: Record<string, string> = sid
-      ? { Cookie: `SID=${sid}`, Referer: BASE }
-      : { Referer: BASE };
+    // qBittorrent 5.1+ accepts a native API key (Settings → WebUI → API Key,
+    // format `qbt_...`) via the Authorization: Bearer header. Prefer the
+    // key if set; fall back to the cookie/session login flow for older
+    // qBit versions (and for users who don't want to bother with the key).
+    let requestHeaders: Record<string, string>;
+    if (KEY) {
+      requestHeaders = { Authorization: `Bearer ${KEY}`, Referer: BASE };
+    } else {
+      const loginRes = await fetch(`${BASE}/api/v2/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Referer": BASE,
+        },
+        body: new URLSearchParams({ username: USER, password: PASS }).toString(),
+        signal: AbortSignal.timeout(6000),
+        next: { revalidate: 0 },
+      });
+      if (loginRes.status === 401 || loginRes.status === 403) throw new AuthError(loginRes.status);
+      const setCookie = loginRes.headers.get("set-cookie");
+      const sid = setCookie?.match(/SID=([^;]+)/)?.[1];
+      // If login succeeds but no SID is returned, qBit's "Bypass auth for
+      // localhost" is enabled — subsequent calls work without a cookie.
+      requestHeaders = sid
+        ? { Cookie: `SID=${sid}`, Referer: BASE }
+        : { Referer: BASE };
+    }
 
     const torrentsRes = await fetch(`${BASE}/api/v2/torrents/info`, {
-      headers: cookieHeader,
+      headers: requestHeaders,
       signal: AbortSignal.timeout(6000),
       next: { revalidate: 0 },
     });
@@ -541,7 +572,8 @@ async function qbittorrent(creds: ServiceCreds): Promise<ServiceResult> {
   } catch (e) {
     const isAuth = e instanceof AuthError;
     const up = await checkReachable(`${BASE}/api/v2/app/version`);
-    return { name: "qbittorrent", up: up || isAuth, configured: true, url: BASE, authError: isAuth, lines: isAuth ? ["check user/pass"] : up ? ["—"] : [] };
+    const authMsg = KEY ? "check api key" : "check user/pass";
+    return { name: "qbittorrent", up: up || isAuth, configured: true, url: BASE, authError: isAuth, lines: isAuth ? [authMsg] : up ? ["—"] : [] };
   }
 }
 
@@ -711,6 +743,15 @@ async function prowlarr(creds: ServiceCreds): Promise<ServiceResult> {
     };
   } catch (e) {
     const isAuth = e instanceof AuthError;
+    // Prowlarr's SQLite history table has a row it can't parse — typically
+    // a corrupted timestamp from a clock-skew event. The app itself is up,
+    // but indexerstats query crashes. Surface this clearly.
+    if (e instanceof UpstreamServerError) {
+      return {
+        name: "prowlarr", up: true, configured: true, url: BASE,
+        lines: ["indexer stats unavailable", "restart prowlarr to refresh"],
+      };
+    }
     const up = await checkReachable(BASE);
     return { name: "prowlarr", up: up || isAuth, configured: true, url: BASE, authError: isAuth, lines: isAuth ? ["check api key"] : up ? ["—"] : [] };
   }

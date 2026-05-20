@@ -200,7 +200,7 @@ Server-side only. **Never** prefix with `NEXT_PUBLIC_` (would expose to client b
 
 ### Service credentials
 - `RADARR_API_KEY`, `SONARR_API_KEY`, `BAZARR_API_KEY`, `TAUTULLI_API_KEY`, `PROWLARR_API_KEY`, `OVERSEERR_API_KEY`
-- `QBIT_USERNAME`, `QBIT_PASSWORD`
+- `QBIT_API_KEY` (qBit 5.1+, format `qbt_...`) **OR** `QBIT_USERNAME` + `QBIT_PASSWORD`
 - `PIHOLE_PASSWORD`
 - `NGINX_USERNAME`, `NGINX_PASSWORD`
 - `UPTIME_KUMA_API_KEY`

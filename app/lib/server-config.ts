@@ -102,7 +102,11 @@ const MANIFEST: ServiceManifest[] = [
   { name: "sonarr",      defaultPort: 33027, envUrl: "SONARR_URL",      authShape: "apikey",   envApiKey:   "SONARR_API_KEY" },
   { name: "bazarr",      defaultPort: 30046, envUrl: "BAZARR_URL",      authShape: "apikey",   envApiKey:   "BAZARR_API_KEY" },
   { name: "tautulli",    defaultPort: 30047, envUrl: "TAUTULLI_URL",    authShape: "apikey",   envApiKey:   "TAUTULLI_API_KEY" },
-  { name: "qbittorrent", defaultPort: 30024, envUrl: "QBIT_URL",        authShape: "userpass", envUsername: "QBIT_USERNAME", envPassword: "QBIT_PASSWORD" },
+  // qBittorrent 5.1+ supports native API keys (Settings → WebUI → API Key,
+  // format qbt_xxxx). Either QBIT_API_KEY or QBIT_USERNAME+QBIT_PASSWORD
+  // satisfies "configured" — see the apikey-or-userpass branch in
+  // resolveService below.
+  { name: "qbittorrent", defaultPort: 30024, envUrl: "QBIT_URL",        authShape: "userpass", envApiKey: "QBIT_API_KEY", envUsername: "QBIT_USERNAME", envPassword: "QBIT_PASSWORD" },
   { name: "overseerr",   defaultPort: 30357, envUrl: "OVERSEERR_URL",   authShape: "apikey",   envApiKey:   "OVERSEERR_API_KEY" },
   { name: "pihole",      defaultPort: 20720, envUrl: "PIHOLE_URL",      authShape: "password", envPassword: "PIHOLE_PASSWORD" },
   { name: "prowlarr",    defaultPort: 30050, envUrl: "PROWLARR_URL",    authShape: "apikey",   envApiKey:   "PROWLARR_API_KEY" },
@@ -164,8 +168,18 @@ function resolveService(m: ServiceManifest, file: PartialFileConfig | null, true
 
   // Determine "configured" — every required credential must have a non-empty value.
   // Bearer-auth services (uptimekuma) are marked optional — they have no-auth fallbacks.
+  // Services that declare both envApiKey AND envUsername (currently qbittorrent
+  // for qBit 5.1+ API key OR legacy user/pass) accept EITHER credential set.
   const required: string[] = [];
-  if (m.authShape === "apikey" || (m.authShape === "bearer" && !m.optionalAuth)) {
+  const supportsBoth = !!m.envApiKey && !!m.envUsername;
+  if (supportsBoth) {
+    // OK if EITHER apiKey is set, OR username+password are both set.
+    const hasApiKey = !!apiKey;
+    const hasUserPass = !!username && !!password;
+    if (!hasApiKey && !hasUserPass) {
+      required.push(m.envApiKey!, m.envUsername!, m.envPassword!);
+    }
+  } else if (m.authShape === "apikey" || (m.authShape === "bearer" && !m.optionalAuth)) {
     if (!apiKey) required.push(m.envApiKey!);
   } else if (m.authShape === "userpass") {
     if (!username) required.push(m.envUsername!);
